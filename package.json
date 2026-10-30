@@ -1,0 +1,49 @@
+{
+  "name": "gaganstudio-file-tools",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@12.16.1",
+  "type": "module",
+  "main": "apps/desktop/electron/main.cjs",
+  "scripts": {
+    "dev": "corepack pnpm --filter @gsft/web dev",
+    "dev:desktop": "corepack pnpm --filter @gsft/web dev --host 127.0.0.1 --port 4173 --strictPort",
+    "desktop:dev": "concurrently -k -s first \"corepack pnpm dev:desktop\" \"wait-on http://127.0.0.1:4173 && electron .\"",
+    "build:web": "corepack pnpm --filter @gsft/web build",
+    "build:desktop": "corepack pnpm build:web && electron-builder --dir",
+    "typecheck": "corepack pnpm -r typecheck",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.30",
+    "concurrently": "^9.1.2",
+    "electron": "^36.4.0",
+    "electron-builder": "^26.0.12",
+    "typescript": "^5.8.3",
+    "vitest": "^3.2.4",
+    "wait-on": "^8.0.3"
+  },
+  "build": {
+    "appId": "com.gaganstudio.filetools",
+    "productName": "GaganStudio File Tools",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "apps/desktop/electron/**/*",
+      "apps/web/dist/**/*",
+      "package.json"
+    ],
+    "extraMetadata": {
+      "main": "apps/desktop/electron/main.cjs"
+    },
+    "win": {
+      "target": "nsis"
+    },
+    "linux": {
+      "target": "AppImage",
+      "category": "Utility"
+    }
+  }
+}

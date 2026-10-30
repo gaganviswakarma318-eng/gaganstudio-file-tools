@@ -1,0 +1,8 @@
+packages:
+  - apps/*
+  - packages/*
+  - packages/processors/*
+allowBuilds:
+  electron: true
+  electron-winstaller: true
+  esbuild: true
