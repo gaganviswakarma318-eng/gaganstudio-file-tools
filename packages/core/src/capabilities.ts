@@ -55,7 +55,12 @@ export function detectPdfProcessingCapability(
   return {
     id: "browser.pdf",
     category: "pdf",
-    operations: ["pdf.extract-pages", "pdf.merge", "pdf.compress"],
+    operations: [
+      "pdf.extract-pages",
+      "pdf.merge",
+      "pdf.compress",
+      "pdf.rotate-pages",
+    ],
     location: "browser",
     inputFormats: ["PDF"],
     outputFormats: ["PDF"],

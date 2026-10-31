@@ -122,6 +122,22 @@ test("losslessly optimizes a PDF and discloses compression limitations", async (
   await expect(page.locator(".pdf-warning")).toContainText("size reduction is not guaranteed");
 });
 
+test("rotates selected pages locally and offers a new PDF", async ({ page }) => {
+  await page.getByLabel("PDF operation").selectOption("pdf.rotate-pages");
+  await page.locator('input[aria-label="Choose a PDF"]').setInputFiles({
+    name: "three-pages.pdf",
+    mimeType: "application/pdf",
+    buffer: createPdfFixture(3),
+  });
+  await page.getByRole("textbox", { name: "Pages to rotate" }).fill("2-3");
+  await page.getByLabel("Clockwise rotation").selectOption("180");
+  await page.getByRole("button", { name: "Rotate pages" }).click();
+
+  await expect(page.locator(".queue-file strong")).toHaveText("three-pages-rotated.pdf");
+  await expect(page.getByText(/3 pages ·/)).toBeVisible();
+  await expect(page.locator(".pdf-warning")).toContainText("display orientation");
+});
+
 test("explains and disables PDF extraction when worker support is missing", async ({ page }) => {
   await page.addInitScript(() => {
     Object.defineProperty(globalThis, "Worker", { value: undefined, configurable: true });

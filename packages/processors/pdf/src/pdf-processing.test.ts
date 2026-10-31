@@ -4,6 +4,7 @@ import type {
   PdfCompressRequest,
   PdfExtractPagesRequest,
   PdfMergeRequest,
+  PdfRotatePagesRequest,
 } from "@gsft/shared";
 import { processPdf } from "./pdf-processing";
 
@@ -123,5 +124,44 @@ describe("processPdf", () => {
     expect(output.getPageCount()).toBe(3);
     expect(result.output.name).toBe("source-optimized.pdf");
     expect(result.warnings.join(" ")).toContain("does not recompress embedded images");
+  });
+
+  it("rotates only selected pages by the requested clockwise amount", async () => {
+    const input = new Blob([Uint8Array.from(await createPdf())], { type: "application/pdf" });
+    const rotateRequest: PdfRotatePagesRequest = {
+      id: "rotate-test",
+      category: "pdf",
+      operation: "pdf.rotate-pages",
+      input: { name: "source.pdf", mimeType: "application/pdf", data: input },
+      options: { pageSelection: "2-3", degrees: 90 },
+    };
+
+    const result = await processPdf(rotateRequest, performance.now());
+    const output = await PDFDocument.load(await result.output.data.arrayBuffer());
+
+    expect(output.getPages().map((page) => page.getRotation().angle)).toEqual([
+      0, 90, 90,
+    ]);
+    expect(result.output.name).toBe("source-rotated.pdf");
+    expect(result.metadata).toMatchObject({
+      pageCount: 3,
+      rotatedPageCount: 2,
+      rotationDegrees: 90,
+    });
+  });
+
+  it("rejects page ranges outside the source document when rotating", async () => {
+    const input = new Blob([Uint8Array.from(await createPdf())], { type: "application/pdf" });
+    const rotateRequest: PdfRotatePagesRequest = {
+      id: "rotate-invalid",
+      category: "pdf",
+      operation: "pdf.rotate-pages",
+      input: { name: "source.pdf", mimeType: "application/pdf", data: input },
+      options: { pageSelection: "4", degrees: 180 },
+    };
+
+    await expect(processPdf(rotateRequest, performance.now())).rejects.toThrow(
+      "between 1 and 3",
+    );
   });
 });

@@ -4,7 +4,7 @@ Updated: 2026-10-31
 
 ## Current milestone
 
-Browser-local PDF extraction, merge, and lossless structural optimization behind the shared processing contract, alongside the verified image-resize flow.
+Browser-local PDF extraction, merge, page rotation, and lossless structural optimization behind the shared processing contract, alongside the verified image-resize flow.
 
 ## Implemented
 
@@ -15,6 +15,7 @@ Browser-local PDF extraction, merge, and lossless structural optimization behind
 - Browser feature probes for Worker, createImageBitmap, OffscreenCanvas, and OffscreenCanvas encoding.
 - Local PDF selected-page extraction using `pdf-lib` in a dedicated Web Worker, with strict page/range validation, PDF signature and file-size checks, and page-order preservation.
 - Local PDF merge in selected order, with input-count, combined-size, and total-page limits.
+- Local clockwise rotation of selected pages by 90, 180, or 270 degrees, preserving unselected pages.
 - Lossless structural PDF optimization using object streams; it does not recompress embedded images and does not guarantee a smaller file.
 - Separate PDF workspace with local-only messaging, operation selection, cancel control, result details, and download; PDF jobs use the shared cancellable queue and source files are never overwritten.
 - Browser image resizing for PNG, JPEG, and WebP with inside, cover/crop, fill, quality, and prevent-enlargement settings.
@@ -45,18 +46,19 @@ Browser-local PDF extraction, merge, and lossless structural optimization behind
 - Canvas exports strip metadata. JPEG output uses a white background; PNG/WebP retain alpha.
 - PDF page extraction may not preserve interactive forms, document-level attachments, or cross-page navigation.
 - PDF merge and optimization may not preserve interactive forms, document-level attachments, or cross-page navigation. Optimization may not reduce file size.
+- PDF rotation changes the page display orientation without modifying page content.
 - The browser encoder does not expose reliable percentage progress, so active jobs use an indeterminate progress indicator.
 - Electron currently uses the browser processing path and does not bundle native image tools.
 
 ## Validation status
 
 - `corepack pnpm typecheck` — passed across all workspaces.
-- `corepack pnpm test` — passed (33 tests), including PDF execution through the shared queue and merge/optimization tests.
+- `corepack pnpm test` — passed (35 tests), including PDF execution through the shared queue and extraction, merge, optimization, and rotation coverage.
 - `corepack pnpm build:web` — passed; Vite emits separate image and PDF worker assets. The PDF library remains in its worker bundle.
-- `corepack pnpm test:e2e` — passed (8 Chromium tests covering image/PDF workers, extraction, merge, optimization, invalid inputs, downloads, and unavailable capabilities).
+- `corepack pnpm test:e2e` — passed (9 Chromium tests covering image/PDF workers, extraction, merge, optimization, rotation, invalid inputs, downloads, and unavailable capabilities).
 - `corepack pnpm build:desktop` — web build passed, but Electron Builder could not finish because its platform-resource download failed with network `EACCES`.
 - Electron development runtime — launched successfully after adding PDF processing; the application window displayed "GaganStudio File Tools".
 
 ## Next milestone
 
-Add PDF splitting or page rotation after reviewing PDF fidelity tradeoffs and expose each operation through the shared processor capability registry.
+Add PDF splitting or page reordering after reviewing PDF fidelity tradeoffs and expose each operation through the shared processor capability registry.

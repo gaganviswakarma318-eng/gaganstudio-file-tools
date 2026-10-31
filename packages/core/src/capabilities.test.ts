@@ -40,7 +40,12 @@ describe("detectProcessingCapabilities", () => {
     expect(detectPdfProcessingCapability(true)).toMatchObject({
       id: "browser.pdf",
       category: "pdf",
-      operations: ["pdf.extract-pages", "pdf.merge", "pdf.compress"],
+      operations: [
+        "pdf.extract-pages",
+        "pdf.merge",
+        "pdf.compress",
+        "pdf.rotate-pages",
+      ],
       location: "browser",
       available: true,
     });

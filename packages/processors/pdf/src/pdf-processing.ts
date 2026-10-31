@@ -1,4 +1,4 @@
-import { PDFDocument, ParseSpeeds } from "pdf-lib";
+import { degrees, PDFDocument, ParseSpeeds } from "pdf-lib";
 import type {
   PdfProcessingRequest,
   ProcessingInput,
@@ -144,6 +144,34 @@ export async function processPdf(
       [PDF_MERGE_WARNING],
       sourcePageCount,
     );
+  }
+
+  if (request.operation === "pdf.rotate-pages") {
+    const rotation = request.options.degrees;
+    if (![90, 180, 270].includes(rotation)) {
+      throw new Error("Choose a page rotation of 90, 180, or 270 degrees clockwise.");
+    }
+    const selectedPages = parsePageSelection(
+      request.options.pageSelection,
+      sourcePageCount,
+    );
+    for (const pageNumber of selectedPages) {
+      const page = source.getPage(pageNumber - 1);
+      page.setRotation(degrees((page.getRotation().angle + rotation) % 360));
+    }
+
+    const result = await createResult(
+      request,
+      source,
+      startedAt,
+      request.input.data.size,
+      "rotated",
+      ["Page rotation changes the PDF page display orientation without altering page content."],
+      sourcePageCount,
+    );
+    result.metadata.rotatedPageCount = selectedPages.length;
+    result.metadata.rotationDegrees = rotation;
+    return result;
   }
 
   const output = await createResult(

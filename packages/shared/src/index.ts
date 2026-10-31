@@ -25,7 +25,8 @@ export type ProcessingOperation =
   | "image.resize"
   | "pdf.extract-pages"
   | "pdf.merge"
-  | "pdf.compress";
+  | "pdf.compress"
+  | "pdf.rotate-pages";
 export type ProcessingStage = "validating" | "decoding" | "processing" | "encoding";
 
 export interface ProcessingInput {
@@ -74,10 +75,23 @@ export interface PdfCompressRequest {
   requestedLocation?: ProcessingLocation;
 }
 
+export interface PdfRotatePagesRequest {
+  id: string;
+  category: "pdf";
+  operation: "pdf.rotate-pages";
+  input: ProcessingInput;
+  options: {
+    pageSelection: string;
+    degrees: 90 | 180 | 270;
+  };
+  requestedLocation?: ProcessingLocation;
+}
+
 export type PdfProcessingRequest =
   | PdfExtractPagesRequest
   | PdfMergeRequest
-  | PdfCompressRequest;
+  | PdfCompressRequest
+  | PdfRotatePagesRequest;
 
 export type ProcessingRequest = ImageResizeRequest | PdfProcessingRequest;
 
@@ -105,6 +119,8 @@ export interface ProcessingMetadata {
   format?: string;
   pageCount?: number;
   sourcePageCount?: number;
+  rotatedPageCount?: number;
+  rotationDegrees?: number;
 }
 
 export interface ProcessingStatistics {

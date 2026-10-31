@@ -5,6 +5,7 @@ import type {
   PdfCompressRequest,
   PdfExtractPagesRequest,
   PdfMergeRequest,
+  PdfRotatePagesRequest,
   ProcessingJob,
   ResizeFit,
   ResizeOptions,
@@ -232,9 +233,10 @@ function PdfWorkspace({
   const [file, setFile] = useState<File>();
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [operation, setOperation] = useState<
-    "pdf.extract-pages" | "pdf.merge" | "pdf.compress"
+    "pdf.extract-pages" | "pdf.merge" | "pdf.compress" | "pdf.rotate-pages"
   >("pdf.extract-pages");
   const [pageSelection, setPageSelection] = useState("1");
+  const [rotationDegrees, setRotationDegrees] = useState<90 | 180 | 270>(90);
   const [requestId, setRequestId] = useState<string>();
   const [localError, setLocalError] = useState("");
   const [isDragging, setIsDragging] = useState(false);
@@ -280,7 +282,11 @@ function PdfWorkspace({
 
     const requestId = crypto.randomUUID();
     const input = { name: file.name, mimeType: file.type || "application/pdf", data: file };
-    const request: PdfExtractPagesRequest | PdfMergeRequest | PdfCompressRequest =
+    const request:
+      | PdfExtractPagesRequest
+      | PdfMergeRequest
+      | PdfCompressRequest
+      | PdfRotatePagesRequest =
       operation === "pdf.extract-pages"
         ? {
             id: requestId,
@@ -290,7 +296,16 @@ function PdfWorkspace({
             options: { pageSelection },
             requestedLocation: "browser",
           }
-        : operation === "pdf.merge"
+        : operation === "pdf.rotate-pages"
+          ? {
+              id: requestId,
+              category: "pdf",
+              operation,
+              input,
+              options: { pageSelection, degrees: rotationDegrees },
+              requestedLocation: "browser",
+            }
+          : operation === "pdf.merge"
           ? {
               id: requestId,
               category: "pdf",
@@ -336,7 +351,7 @@ function PdfWorkspace({
 
   return <>
     <section className="page-heading">
-      <div><div className="eyebrow">LOCAL PDF WORKSPACE</div><h1>Work with PDFs privately.</h1><p>Extract pages, merge documents, or optimize PDF structure. Your originals stay untouched, and files never leave this device.</p></div>
+      <div><div className="eyebrow">LOCAL PDF WORKSPACE</div><h1>Work with PDFs privately.</h1><p>Extract or rotate pages, merge documents, or optimize PDF structure. Your originals stay untouched, and files never leave this device.</p></div>
       <span className="heading-stamp">02 <span>/ 07</span></span>
     </section>
 
@@ -372,17 +387,19 @@ function PdfWorkspace({
     <div className="pdf-workbench">
       <section className="panel settings-panel pdf-settings">
         <div className="section-title-row"><div><h3>PDF operation</h3><span>All processing stays on this device</span></div><span className="settings-badge">PDF</span></div>
-        <label className="select-field pdf-operation-field"><span className="field-label">OPERATION</span><select aria-label="PDF operation" value={operation} onChange={(event) => setOperation(event.target.value as typeof operation)}><option value="pdf.extract-pages">Extract pages</option><option value="pdf.merge">Merge PDFs</option><option value="pdf.compress">Compress (lossless)</option></select></label>
-        {operation === "pdf.extract-pages" && <label className="pdf-pages-field">
-          <span className="field-label">PAGES TO EXTRACT</span>
-          <input aria-label="Pages to extract" value={pageSelection} onChange={(event) => setPageSelection(event.target.value)} placeholder="1, 3-5" />
-          <small>Use commas and ranges, for example 1, 3-5. Page numbers are checked against the selected PDF.</small>
+        <label className="select-field pdf-operation-field"><span className="field-label">OPERATION</span><select aria-label="PDF operation" value={operation} onChange={(event) => setOperation(event.target.value as typeof operation)}><option value="pdf.extract-pages">Extract pages</option><option value="pdf.rotate-pages">Rotate pages</option><option value="pdf.merge">Merge PDFs</option><option value="pdf.compress">Compress (lossless)</option></select></label>
+        {(operation === "pdf.extract-pages" || operation === "pdf.rotate-pages") && <label className="pdf-pages-field">
+          <span className="field-label">{operation === "pdf.extract-pages" ? "PAGES TO EXTRACT" : "PAGES TO ROTATE"}</span>
+          <input aria-label={operation === "pdf.extract-pages" ? "Pages to extract" : "Pages to rotate"} value={pageSelection} onChange={(event) => setPageSelection(event.target.value)} placeholder="1, 3-5" />
+          <small>{operation === "pdf.extract-pages" ? "Use commas and ranges, for example 1, 3-5. Page numbers are checked against the selected PDF." : "Use commas and ranges, for example 1, 3-5. Only selected pages are rotated."}</small>
         </label>}
+        {operation === "pdf.rotate-pages" && <label className="select-field pdf-operation-field"><span className="field-label">CLOCKWISE ROTATION</span><select aria-label="Clockwise rotation" value={rotationDegrees} onChange={(event) => setRotationDegrees(Number(event.target.value) as 90 | 180 | 270)}><option value={90}>90°</option><option value={180}>180°</option><option value={270}>270°</option></select></label>}
         {operation === "pdf.merge" && <p className="pdf-operation-note">Choose two or more PDFs. Pages are combined in the order shown in the file picker. Up to 50 files and 250 MB total.</p>}
         {operation === "pdf.compress" && <p className="pdf-operation-note">Lossless structural optimization only. Embedded images are not recompressed, so size reduction is not guaranteed.</p>}
+        {operation === "pdf.rotate-pages" && <p className="pdf-operation-note">Rotation changes page display orientation without changing page content. Pages not selected remain unchanged.</p>}
         {unavailableReason && <p className="capability-warning" role="status">{unavailableReason}</p>}
         <div className="pdf-actions">
-          <button className="primary-button" onClick={() => void process()} disabled={!capabilityAvailable || isProcessing}>{operation === "pdf.extract-pages" ? "Extract pages" : operation === "pdf.merge" ? "Merge PDFs" : "Compress PDF"} <span>↗</span></button>
+          <button className="primary-button" onClick={() => void process()} disabled={!capabilityAvailable || isProcessing}>{operation === "pdf.extract-pages" ? "Extract pages" : operation === "pdf.rotate-pages" ? "Rotate pages" : operation === "pdf.merge" ? "Merge PDFs" : "Compress PDF"} <span>↗</span></button>
           {isProcessing && activeJob && <button className="cancel-button" onClick={() => manager.cancel(activeJob.id)}>Cancel</button>}
         </div>
         <p className="privacy-note"><span>◈</span> Processed locally in a background worker. No remote upload.</p>
