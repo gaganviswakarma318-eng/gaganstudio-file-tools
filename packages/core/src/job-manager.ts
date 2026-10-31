@@ -1,4 +1,9 @@
-import type { ProcessingJob, ResizeOptions } from "@gsft/shared";
+import type {
+  ImageResizeRequest,
+  ProcessingJob,
+  ProcessingRequest,
+  ResizeOptions,
+} from "@gsft/shared";
 import { ProcessingRouter } from "./processing-router";
 
 export class JobManager {
@@ -26,19 +31,38 @@ export class JobManager {
 
   enqueue(files: File[], options: ResizeOptions): void {
     for (const file of files) {
-      const id = crypto.randomUUID();
-      this.jobs.set(id, {
-        id,
-        file,
-        status: "queued",
-        progress: null,
-        createdAt: Date.now(),
+      const request: ImageResizeRequest = {
+        id: crypto.randomUUID(),
+        category: "image",
+        operation: "image.resize",
+        input: { name: file.name, mimeType: file.type, data: file },
         options,
-      });
-      this.pending.push(id);
+      };
+      this.enqueueRequest(request, file);
     }
     this.emit();
+  }
+
+  enqueueRequest(request: ProcessingRequest, file: File): string {
+    if (request.input.data !== file) {
+      throw new Error("The queued file must match the processing request input.");
+    }
+    if (this.jobs.has(request.id)) {
+      throw new Error(`A processing job with ID "${request.id}" already exists.`);
+    }
+    this.jobs.set(request.id, {
+      id: request.id,
+      file,
+      request,
+      status: "queued",
+      progress: null,
+      createdAt: Date.now(),
+      ...(request.operation === "image.resize" ? { options: request.options } : {}),
+    });
+    this.pending.push(request.id);
+    this.emit();
     this.pump();
+    return request.id;
   }
 
   cancel(id: string): void {
@@ -89,23 +113,8 @@ export class JobManager {
       if (controller.signal.aborted) throw new DOMException("Cancelled", "AbortError");
       this.jobs.set(job.id, { ...this.jobs.get(job.id)!, status: "processing" });
       this.emit();
-      const options = job.options;
-      if (!options) {
-        throw new Error("Resize options are required to process an image.");
-      }
-
       const result = await this.router.process(
-        {
-          id: job.id,
-          category: "image",
-          operation: "image.resize",
-          input: {
-            name: job.file.name,
-            mimeType: job.file.type,
-            data: job.file,
-          },
-          options,
-        },
+        job.request,
         {
           signal: controller.signal,
           reportProgress: ({ percentage }) => {
@@ -125,6 +134,7 @@ export class JobManager {
       if (current) {
         this.jobs.set(job.id, {
           ...current,
+          result,
           output: result.output.data,
           outputName: result.output.name,
           outputWidth: result.metadata.width,

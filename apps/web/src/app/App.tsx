@@ -1,17 +1,24 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { JobManager, ProcessingRouter } from "@gsft/core";
-import type { ImageFormat, ProcessingJob, ResizeFit, ResizeOptions } from "@gsft/shared";
+import type {
+  ImageFormat,
+  PdfExtractPagesRequest,
+  ProcessingJob,
+  ResizeFit,
+  ResizeOptions,
+} from "@gsft/shared";
 import { createBrowserImageProcessor } from "@gsft/image-processor";
+import { createBrowserPdfProcessor } from "@gsft/pdf-processor";
 
 const navItems = [
-  { name: "Home", icon: "⌂", active: false },
-  { name: "Image tools", icon: "▧", active: true },
-  { name: "PDF tools", icon: "▤" },
-  { name: "Documents", icon: "▤" },
-  { name: "Video", icon: "▷" },
-  { name: "Audio", icon: "♫" },
-  { name: "Archives", icon: "▣" },
-];
+  { name: "Home", icon: "⌂", tool: null },
+  { name: "Image tools", icon: "▧", tool: "image" },
+  { name: "PDF tools", icon: "▤", tool: "pdf" },
+  { name: "Documents", icon: "▤", tool: null },
+  { name: "Video", icon: "▷", tool: null },
+  { name: "Audio", icon: "♫", tool: null },
+  { name: "Archives", icon: "▣", tool: null },
+] as const;
 
 const tools = [
   { icon: "↔", title: "Image resizer", detail: "Resize without leaving your device", active: true },
@@ -28,6 +35,7 @@ function formatBytes(bytes: number): string {
 }
 
 function App() {
+  const [activeTool, setActiveTool] = useState<"image" | "pdf">("image");
   const [theme, setTheme] = useState<"light" | "dark" | "system">("system");
   const [files, setFiles] = useState<File[]>([]);
   const [jobs, setJobs] = useState<ProcessingJob[]>([]);
@@ -45,8 +53,14 @@ function App() {
     [width, height, fit, format, quality, preventEnlargement],
   );
   const imageProcessor = useMemo(() => createBrowserImageProcessor(), []);
-  const router = useMemo(() => new ProcessingRouter([imageProcessor]), [imageProcessor]);
+  const pdfProcessor = useMemo(() => createBrowserPdfProcessor(), []);
+  const router = useMemo(
+    () => new ProcessingRouter([imageProcessor, pdfProcessor]),
+    [imageProcessor, pdfProcessor],
+  );
   const imageResizeCapability = imageProcessor.capability;
+  const pdfExtractCapability = pdfProcessor.capability;
+  const activeCapability = activeTool === "image" ? imageResizeCapability : pdfExtractCapability;
   const manager = useMemo(
     () => new JobManager(router),
     [router],
@@ -100,9 +114,9 @@ function App() {
         <div className="workspace-label">WORKSPACE</div>
         <nav className="primary-nav" aria-label="Main navigation">
           {navItems.map((item) => (
-            <button key={item.name} className={`nav-item${item.active ? " active" : ""}`} disabled={!item.active} title={item.active ? undefined : "Coming in a future milestone"}>
+            <button key={item.name} className={`nav-item${item.tool === activeTool ? " active" : ""}`} disabled={!item.tool} onClick={() => item.tool && setActiveTool(item.tool)} title={item.tool ? undefined : "Coming in a future milestone"}>
               <span className="nav-icon">{item.icon}</span><span>{item.name}</span>
-              {!item.active && <span className="nav-soon">Soon</span>}
+              {!item.tool && <span className="nav-soon">Soon</span>}
             </button>
           ))}
         </nav>
@@ -118,10 +132,10 @@ function App() {
 
       <main className="main-panel">
         <header className="topbar">
-          <div className="breadcrumb">Workspace <span>/</span> <strong>Image tools</strong></div>
+          <div className="breadcrumb">Workspace <span>/</span> <strong>{activeTool === "image" ? "Image tools" : "PDF tools"}</strong></div>
           <div className="topbar-actions">
-            <span className={`local-badge${imageResizeCapability.available ? "" : " unavailable"}`} title={imageResizeCapability.unavailableReason}>
-              <span />{imageResizeCapability.available ? "Local processing" : "Image processing unavailable"}
+            <span className={`local-badge${activeCapability.available ? "" : " unavailable"}`} title={activeCapability.unavailableReason}>
+              <span />{activeCapability.available ? "Local processing" : `${activeTool === "image" ? "Image" : "PDF"} processing unavailable`}
             </span>
             <label className="theme-control" title="Color theme">
               <span className="theme-icon">{theme === "dark" ? "☾" : theme === "light" ? "☼" : "◐"}</span>
@@ -134,6 +148,7 @@ function App() {
         </header>
 
         <div className="content">
+          {activeTool === "image" ? <>
           <section className="page-heading">
             <div><div className="eyebrow">YOUR CREATIVE WORKSPACE</div><h1>Make images fit.</h1><p>Resize, convert, and fine-tune your images — privately, right on your device.</p></div>
             <span className="heading-stamp">01 <span>/ 07</span></span>
@@ -187,12 +202,169 @@ function App() {
             <div className="queue-heading"><div><div className="queue-overline">YOUR WORKSPACE <span>·</span> LIVE</div><h2>Processing queue</h2></div><div className="queue-summary">{activeCount > 0 ? <><span className="pulse-dot" />{activeCount} in progress</> : <>{completedCount} completed</>}</div></div>
             {jobs.length === 0 ? <div className="queue-empty"><div className="empty-stack"><span>▤</span><i>✓</i></div><div><strong>Nothing in the queue — yet</strong><p>Your image jobs and finished downloads will show up here.</p></div><span className="empty-queue-label">READY WHEN YOU ARE</span></div> : <div className="queue-list">{jobs.map((job) => <QueueRow key={job.id} job={job} onCancel={() => manager.cancel(job.id)} onDownload={() => download(job)} />)}</div>}
           </section>
+          </> : <PdfWorkspace
+            manager={manager}
+            jobs={jobs}
+            capabilityAvailable={pdfExtractCapability.available}
+            unavailableReason={pdfExtractCapability.unavailableReason}
+          />}
 
           <footer className="app-footer"><span>GAGANSTUDIO FILE TOOLS <span>·</span> ONE WORKSPACE. EVERY FILE.</span><span>BUILT WITH PRIVACY IN MIND <i>◈</i></span></footer>
         </div>
       </main>
     </div>
   );
+}
+
+function PdfWorkspace({
+  manager,
+  jobs,
+  capabilityAvailable,
+  unavailableReason,
+}: {
+  manager: JobManager;
+  jobs: ProcessingJob[];
+  capabilityAvailable: boolean;
+  unavailableReason?: string;
+}) {
+  const [file, setFile] = useState<File>();
+  const [pageSelection, setPageSelection] = useState("1");
+  const [requestId, setRequestId] = useState<string>();
+  const [localError, setLocalError] = useState("");
+  const [isDragging, setIsDragging] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const activeRequestRef = useRef<string | undefined>(undefined);
+
+  const activeJob = jobs.find((job) => job.id === requestId);
+  const result = activeJob?.result;
+  const error = localError || activeJob?.error || "";
+  const isProcessing =
+    activeJob?.status === "queued" ||
+    activeJob?.status === "validating" ||
+    activeJob?.status === "processing";
+  const isCompleted = activeJob?.status === "completed" && Boolean(result);
+
+  useEffect(
+    () => () => {
+      if (activeRequestRef.current) manager.cancel(activeRequestRef.current);
+    },
+    [manager],
+  );
+
+  const selectFile = (selected?: File) => {
+    if (activeRequestRef.current) manager.cancel(activeRequestRef.current);
+    activeRequestRef.current = undefined;
+    setFile(selected);
+    setRequestId(undefined);
+    setLocalError("");
+  };
+
+  const process = () => {
+    if (!file) {
+      setLocalError("Choose a PDF before extracting pages.");
+      return;
+    }
+
+    const requestId = crypto.randomUUID();
+    const request: PdfExtractPagesRequest = {
+      id: requestId,
+      category: "pdf",
+      operation: "pdf.extract-pages",
+      input: { name: file.name, mimeType: file.type, data: file },
+      options: { pageSelection },
+      requestedLocation: "browser",
+    };
+
+    try {
+      activeRequestRef.current = manager.enqueueRequest(request, file);
+      setRequestId(requestId);
+      setLocalError("");
+    } catch (failure) {
+      setLocalError(failure instanceof Error ? failure.message : "PDF job could not be queued.");
+    }
+  };
+
+  const download = () => {
+    if (!activeJob?.output || !activeJob.outputName) return;
+    const url = URL.createObjectURL(activeJob.output);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = activeJob.outputName;
+    anchor.click();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1_000);
+  };
+
+  return <>
+    <section className="page-heading">
+      <div><div className="eyebrow">LOCAL PDF WORKSPACE</div><h1>Keep the pages you need.</h1><p>Extract selected pages into a new PDF. Your original stays untouched, and your file never leaves this device.</p></div>
+      <span className="heading-stamp">02 <span>/ 07</span></span>
+    </section>
+
+    <section
+      className={`drop-zone${isDragging ? " dragging" : ""}`}
+      onDragOver={(event) => { event.preventDefault(); setIsDragging(true); }}
+      onDragLeave={() => setIsDragging(false)}
+      onDrop={(event) => {
+        event.preventDefault();
+        setIsDragging(false);
+        selectFile(event.dataTransfer.files[0]);
+      }}
+    >
+      <input
+        ref={inputRef}
+        className="visually-hidden"
+        type="file"
+        accept="application/pdf,.pdf"
+        aria-label="Choose a PDF"
+        onChange={(event) => {
+          selectFile(event.target.files?.[0]);
+          event.target.value = "";
+        }}
+      />
+      <div className="upload-art" aria-hidden="true"><div className="upload-art-back" /><div className="upload-art-front"><span>▤</span><i /></div><div className="upload-sparkle">✳</div></div>
+      <div className="drop-copy"><h2>{file ? file.name : "Drop a PDF here"}</h2><p>{file ? `${formatBytes(file.size)} · Original file will not be changed` : <>or <button className="text-button" onClick={() => inputRef.current?.click()}>browse files</button> from your device</>}</p></div>
+      <div className="drop-meta"><span>PDF</span><i /> Up to 250 MB</div>
+    </section>
+
+    {error && <div className="notice" role="alert"><span>!</span>{error}<button onClick={() => setLocalError("")} aria-label="Dismiss">×</button></div>}
+
+    <div className="pdf-workbench">
+      <section className="panel settings-panel pdf-settings">
+        <div className="section-title-row"><div><h3>Extract PDF pages</h3><span>Choose individual pages or a page range</span></div><span className="settings-badge">PDF</span></div>
+        <label className="pdf-pages-field">
+          <span className="field-label">PAGES TO EXTRACT</span>
+          <input aria-label="Pages to extract" value={pageSelection} onChange={(event) => setPageSelection(event.target.value)} placeholder="1, 3-5" />
+          <small>Use commas and ranges, for example 1, 3-5. Page numbers are checked against the selected PDF.</small>
+        </label>
+        {unavailableReason && <p className="capability-warning" role="status">{unavailableReason}</p>}
+        <div className="pdf-actions">
+          <button className="primary-button" onClick={() => void process()} disabled={!capabilityAvailable || status === "processing"}>Extract pages <span>↗</span></button>
+          {isProcessing && activeJob && <button className="cancel-button" onClick={() => manager.cancel(activeJob.id)}>Cancel</button>}
+        </div>
+        <p className="privacy-note"><span>◈</span> Processed locally in a background worker. No remote upload.</p>
+      </section>
+
+      <aside className="panel pdf-info-panel">
+        <div className="section-title-row"><div><h3>PDF page extraction</h3><span>Simple, private, reversible</span></div><span className="tool-count">01</span></div>
+        <div className="pdf-info-copy"><span>▤</span><p><strong>Original pages stay intact</strong><br />Selected pages are copied into a separate PDF. The source file is never overwritten.</p></div>
+        <div className="pdf-info-copy"><span>◈</span><p><strong>Local-only processing</strong><br />The PDF is handled on this device. Remote processing is not configured.</p></div>
+        <div className="pdf-info-copy"><span>!</span><p><strong>Document limitations</strong><br />Interactive forms, attachments, and cross-page navigation may not be retained.</p></div>
+      </aside>
+    </div>
+
+    <section className="queue-section pdf-result-section">
+      <div className="queue-heading"><div><div className="queue-overline">YOUR WORKSPACE <span>·</span> LOCAL</div><h2>Extraction result</h2></div><div className="queue-summary">{isProcessing ? <><span className="pulse-dot" />Working in background</> : isCompleted ? "Ready to download" : activeJob?.status === "cancelled" ? "Cancelled" : "PDF page extraction"}</div></div>
+      {result ? <div className="queue-item">
+        <div className="queue-row">
+          <div className="queue-file-icon">▤</div>
+          <div className="queue-file"><strong>{result.output.name}</strong><span>{result.metadata.pageCount} pages · {formatBytes(result.statistics.outputBytes)} output · {formatBytes(result.statistics.inputBytes)} original · {result.statistics.durationMs} ms</span></div>
+          <div className="queue-status"><span className="status-mark completed" />Ready</div>
+          <button className="download-button" onClick={download}>Download <span>↓</span></button>
+        </div>
+        {result.warnings.map((warning) => <p className="pdf-warning" key={warning}>{warning}</p>)}
+      </div> : isProcessing ? <div className="queue-empty pdf-progress"><span className="pulse-dot" /><div><strong>Extracting pages in a background worker</strong><p>Large PDFs may take a little while. You can cancel at any time.</p></div><span className="progress-track indeterminate"><span /></span></div> : activeJob?.status === "failed" ? <div className="queue-empty"><div><strong>PDF extraction failed</strong><p>{error}</p></div></div> : <div className="queue-empty"><div className="empty-stack"><span>▤</span><i>✓</i></div><div><strong>{activeJob?.status === "cancelled" ? "Extraction cancelled" : "No PDF processed yet"}</strong><p>Select a PDF and choose the page numbers to extract.</p></div><span className="empty-queue-label">READY WHEN YOU ARE</span></div>}
+    </section>
+  </>;
 }
 
 function QueueRow({ job, onCancel, onDownload }: { job: ProcessingJob; onCancel: () => void; onDownload: () => void }) {

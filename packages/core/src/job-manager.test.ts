@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import type {
   FileProcessor,
   ImageResizeRequest,
+  PdfExtractPagesRequest,
   ProcessingContext,
   ProcessingResult,
   ResizeOptions,
@@ -99,5 +100,54 @@ describe("JobManager", () => {
     manager.cancel(job.id);
     expect(manager.getJobs()[0]?.status).toBe("cancelled");
     manager.resume();
+  });
+
+  it("runs PDF extraction as a cancellable queue job through the shared router", async () => {
+    const pdfFile = new File(["pdf-input"], "source.pdf", { type: "application/pdf" });
+    const request: PdfExtractPagesRequest = {
+      id: "pdf-job",
+      category: "pdf",
+      operation: "pdf.extract-pages",
+      input: { name: pdfFile.name, mimeType: pdfFile.type, data: pdfFile },
+      options: { pageSelection: "1-2" },
+      requestedLocation: "browser",
+    };
+    const data = new Blob(["pdf-output"], { type: "application/pdf" });
+    const processor: FileProcessor<PdfExtractPagesRequest> = {
+      capability: {
+        id: "browser.pdf.extract-pages",
+        category: "pdf",
+        operations: ["pdf.extract-pages"],
+        location: "browser",
+        inputFormats: ["PDF"],
+        outputFormats: ["PDF"],
+        requirements: ["Web Workers", "pdf-lib"],
+        available: true,
+      },
+      async process(item) {
+        return {
+          requestId: item.id,
+          location: "browser",
+          output: { data, name: "source-extracted.pdf", mimeType: "application/pdf" },
+          metadata: { sourcePageCount: 3, pageCount: 2 },
+          statistics: {
+            inputBytes: item.input.data.size,
+            outputBytes: data.size,
+            durationMs: 1,
+          },
+          warnings: [],
+        };
+      },
+    };
+    const manager = new JobManager(new ProcessingRouter([processor]));
+
+    expect(manager.enqueueRequest(request, pdfFile)).toBe("pdf-job");
+    await vi.waitFor(() => expect(manager.getJobs()[0]?.status).toBe("completed"));
+    expect(manager.getJobs()[0]).toMatchObject({
+      request,
+      outputName: "source-extracted.pdf",
+      location: "browser",
+      result: { metadata: { pageCount: 2 } },
+    });
   });
 });

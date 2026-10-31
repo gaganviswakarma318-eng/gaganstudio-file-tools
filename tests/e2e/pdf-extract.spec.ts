@@ -1,0 +1,100 @@
+import { expect, test } from "@playwright/test";
+
+function createPdfFixture(pageCount: number): Buffer {
+  const kids = Array.from({ length: pageCount }, (_, index) => `${3 + index * 2} 0 R`).join(" ");
+  const objects = [
+    "<< /Type /Catalog /Pages 2 0 R >>",
+    `<< /Type /Pages /Kids [${kids}] /Count ${pageCount} >>`,
+  ];
+
+  for (let index = 0; index < pageCount; index += 1) {
+    const pageObject = 3 + index * 2;
+    objects.push(
+      `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${300 + index * 100} 400] /Resources << >> /Contents ${pageObject + 1} 0 R >>`,
+      "<< /Length 0 >>\nstream\n\nendstream",
+    );
+  }
+
+  let document = "%PDF-1.7\n";
+  const offsets = [0];
+  for (const [index, object] of objects.entries()) {
+    offsets.push(Buffer.byteLength(document, "ascii"));
+    document += `${index + 1} 0 obj\n${object}\nendobj\n`;
+  }
+
+  const xrefOffset = Buffer.byteLength(document, "ascii");
+  document += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
+  for (const offset of offsets.slice(1)) {
+    document += `${String(offset).padStart(10, "0")} 00000 n \n`;
+  }
+  document += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF\n`;
+  return Buffer.from(document, "ascii");
+}
+
+test.beforeEach(async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "PDF tools" }).click();
+  await expect(page.locator(".breadcrumb strong")).toHaveText("PDF tools");
+});
+
+test("extracts selected PDF pages locally and downloads a new PDF", async ({ page }) => {
+  let workerStarted = false;
+  page.on("worker", () => {
+    workerStarted = true;
+  });
+
+  await page.locator('input[aria-label="Choose a PDF"]').setInputFiles({
+    name: "three-pages.pdf",
+    mimeType: "application/pdf",
+    buffer: createPdfFixture(3),
+  });
+  await expect(page.getByText("three-pages.pdf")).toBeVisible();
+  await page.getByRole("textbox", { name: "Pages to extract" }).fill("3, 1");
+  await page.getByRole("button", { name: "Extract pages" }).click();
+
+  await expect(page.locator(".queue-file strong")).toHaveText("three-pages-extracted.pdf");
+  await expect(page.getByText(/2 pages ·/)).toBeVisible();
+  expect(workerStarted).toBe(true);
+
+  const downloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Download" }).click();
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toBe("three-pages-extracted.pdf");
+  const stream = await download.createReadStream();
+  if (!stream) throw new Error("The generated PDF download did not expose a stream.");
+  const chunks: Buffer[] = [];
+  for await (const chunk of stream) chunks.push(Buffer.from(chunk));
+  expect(Buffer.concat(chunks).subarray(0, 5).toString("ascii")).toBe("%PDF-");
+});
+
+test("reports invalid PDFs and out-of-range page selections", async ({ page }) => {
+  await page.locator('input[aria-label="Choose a PDF"]').setInputFiles({
+    name: "not-a-pdf.pdf",
+    mimeType: "application/pdf",
+    buffer: Buffer.from("not actually a PDF"),
+  });
+  await page.getByRole("button", { name: "Extract pages" }).click();
+  await expect(page.locator(".notice")).toContainText("valid PDF");
+
+  await page.locator('input[aria-label="Choose a PDF"]').setInputFiles({
+    name: "two-pages.pdf",
+    mimeType: "application/pdf",
+    buffer: createPdfFixture(2),
+  });
+  await page.getByRole("textbox", { name: "Pages to extract" }).fill("3");
+  await page.getByRole("button", { name: "Extract pages" }).click();
+  await expect(page.locator(".notice")).toContainText("between 1 and 2");
+  await expect(page.getByRole("button", { name: "Download" })).toHaveCount(0);
+});
+
+test("explains and disables PDF extraction when worker support is missing", async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(globalThis, "Worker", { value: undefined, configurable: true });
+  });
+  await page.reload();
+  await page.getByRole("button", { name: "PDF tools" }).click();
+
+  await expect(page.locator(".local-badge")).toHaveText("PDF processing unavailable");
+  await expect(page.getByRole("status")).toContainText("Web Workers");
+  await expect(page.getByRole("button", { name: "Extract pages" })).toBeDisabled();
+});

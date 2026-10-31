@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import type {
   FileProcessor,
   ImageResizeRequest,
+  PdfExtractPagesRequest,
   ProcessingContext,
   ProcessingResult,
 } from "@gsft/shared";
@@ -114,5 +115,52 @@ describe("ProcessingRouter", () => {
     await expect(router.process(request, context)).rejects.toThrow(
       "inconsistent input size",
     );
+  });
+
+  it("routes PDF requests only to a browser PDF extraction processor", async () => {
+    const pdfRequest: PdfExtractPagesRequest = {
+      id: "pdf-request",
+      category: "pdf",
+      operation: "pdf.extract-pages",
+      input: {
+        name: "source.pdf",
+        mimeType: "application/pdf",
+        data: new Blob(["pdf"]),
+      },
+      options: { pageSelection: "1-2" },
+      requestedLocation: "browser",
+    };
+    const process = vi.fn(async () => ({
+      ...result(pdfRequest.id),
+      statistics: {
+        ...result(pdfRequest.id).statistics,
+        inputBytes: pdfRequest.input.data.size,
+      },
+      output: {
+        ...result(pdfRequest.id).output,
+        mimeType: "application/pdf",
+      },
+    }));
+    const processor: FileProcessor<PdfExtractPagesRequest> = {
+      capability: {
+        id: "browser.pdf.extract-pages",
+        category: "pdf",
+        operations: ["pdf.extract-pages"],
+        location: "browser",
+        inputFormats: ["PDF"],
+        outputFormats: ["PDF"],
+        requirements: ["Web Workers", "pdf-lib"],
+        available: true,
+      },
+      process,
+    };
+    const router = new ProcessingRouter([processor]);
+
+    await expect(router.process(pdfRequest, context)).resolves.toMatchObject({
+      requestId: "pdf-request",
+      location: "browser",
+      output: { mimeType: "application/pdf" },
+    });
+    expect(process).toHaveBeenCalledOnce();
   });
 });

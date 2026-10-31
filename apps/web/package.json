@@ -11,6 +11,7 @@
   "dependencies": {
     "@gsft/core": "workspace:*",
     "@gsft/image-processor": "workspace:*",
+    "@gsft/pdf-processor": "workspace:*",
     "@gsft/shared": "workspace:*",
     "react": "^19.1.0",
     "react-dom": "^19.1.0"

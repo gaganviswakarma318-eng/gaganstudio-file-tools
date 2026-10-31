@@ -4,7 +4,7 @@ Updated: 2026-10-31
 
 ## Current milestone
 
-Shared processing contracts, browser capability detection, capability-aware routing, and the verified local image-resize flow.
+Browser-local PDF page extraction behind the shared processing contract, alongside the verified image-resize flow.
 
 ## Implemented
 
@@ -13,12 +13,15 @@ Shared processing contracts, browser capability detection, capability-aware rout
 - Shared typed processing requests, results, progress context, metadata/statistics, locations, and processor capabilities.
 - Processing router that selects available processors by category, operation, and requested execution location, and validates returned request IDs and output size.
 - Browser feature probes for Worker, createImageBitmap, OffscreenCanvas, and OffscreenCanvas encoding.
+- Local PDF selected-page extraction using `pdf-lib` in a dedicated Web Worker, with strict page/range validation, PDF signature and file-size checks, and page-order preservation.
+- Separate PDF extraction workspace with local-only messaging, page selection, cancel control, result details, and download; PDF jobs use the shared cancellable queue and the source PDF is never overwritten.
 - Browser image resizing for PNG, JPEG, and WebP with inside, cover/crop, fill, quality, and prevent-enlargement settings.
 - Dedicated module Web Worker using `createImageBitmap` and `OffscreenCanvas`; the UI thread remains available during decode, draw, and encode.
 - Queue results show source/output dimensions and byte sizes, with a savings percentage when output is smaller.
 - Completed jobs include managed before/after image previews with dimensions and file sizes.
-- Playwright browser tests cover successful worker resize/output/download, invalid image rejection, and unavailable worker capability messaging.
+- Playwright browser tests cover image and PDF worker processing, invalid input handling, downloads, and unavailable capability messaging.
 - The image worker and queue communicate through the shared processing contract; unsupported browser capabilities are explained and disable the action in the UI.
+- PDF processor capability is independently detected and routed; no remote PDF processor or upload path is configured.
 - Responsive dashboard, system/light/dark appearance, multiple-file drop/pick, cancellation, and downloads.
 - Electron renderer isolation, sandboxing, and disabled Node integration.
 - Architecture, README, and project status documentation.
@@ -28,7 +31,7 @@ Shared processing contracts, browser capability detection, capability-aware rout
 
 - Production desktop packaging and native open/save dialogs; Electron Builder packaging was attempted but its network fetch was denied in this environment.
 - Persistent history, queue retry/pause controls, image compression independent of resizing, animated-image processing, and metadata controls.
-- PDF, document, video, audio, archive, and remote processing.
+- PDF merge, compression, and other page operations; document, video, audio, archive, and remote processing.
 - Explicit remote-processing consent flow and remote processor.
 
 ## Known limitations
@@ -38,18 +41,19 @@ Shared processing contracts, browser capability detection, capability-aware rout
 - Animated GIF is rejected because a single-frame canvas export would discard animation.
 - AVIF/TIFF detection is informational; decoding depends on the browser.
 - Canvas exports strip metadata. JPEG output uses a white background; PNG/WebP retain alpha.
+- PDF page extraction may not preserve interactive forms, document-level attachments, or cross-page navigation.
 - The browser encoder does not expose reliable percentage progress, so active jobs use an indeterminate progress indicator.
 - Electron currently uses the browser processing path and does not bundle native image tools.
 
 ## Validation status
 
 - `corepack pnpm typecheck` — passed across all workspaces.
-- `corepack pnpm test` — passed (15 tests).
-- `corepack pnpm build:web` — passed; Vite emitted a separate image worker asset.
-- `corepack pnpm test:e2e` — passed (3 Chromium tests).
+- `corepack pnpm test` — passed (30 tests), including PDF execution through the shared queue.
+- `corepack pnpm build:web` — passed; Vite emits separate image and PDF worker assets. The PDF library remains in its worker bundle.
+- `corepack pnpm test:e2e` — passed (6 Chromium tests covering image/PDF workers, valid and invalid inputs, downloads, and unavailable capabilities).
 - `corepack pnpm build:desktop` — web build passed, but Electron Builder could not finish because its platform-resource download failed with network `EACCES`.
-- Electron development runtime — launched successfully; the application window displayed "GaganStudio File Tools".
+- Electron development runtime — launched successfully after adding PDF processing; the application window displayed "GaganStudio File Tools".
 
 ## Next milestone
 
-Define and implement a PDF processor behind the shared contract, with an explicit browser/desktop capability and no remote path by default.
+Add PDF merge and compression only after reviewing their fidelity/quality tradeoffs and expose each operation through this processor capability registry.

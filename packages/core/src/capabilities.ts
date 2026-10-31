@@ -48,3 +48,21 @@ export function detectProcessingCapabilities(
     },
   ];
 }
+
+export function detectPdfProcessingCapability(
+  workerAvailable = typeof globalThis.Worker === "function",
+): ProcessorCapability {
+  return {
+    id: "browser.pdf.extract-pages",
+    category: "pdf",
+    operations: ["pdf.extract-pages"],
+    location: "browser",
+    inputFormats: ["PDF"],
+    outputFormats: ["PDF"],
+    requirements: ["Web Workers", "pdf-lib"],
+    available: workerAvailable,
+    ...(workerAvailable ? {} : {
+      unavailableReason: "PDF page extraction requires Web Workers in this browser.",
+    }),
+  };
+}

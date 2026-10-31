@@ -21,7 +21,7 @@ export interface ResizeOptions {
 
 export type FileCategory = "image" | "pdf" | "document" | "video" | "audio" | "archive";
 export type ProcessingLocation = "browser" | "desktop" | "remote";
-export type ProcessingOperation = "image.resize";
+export type ProcessingOperation = "image.resize" | "pdf.extract-pages";
 export type ProcessingStage = "validating" | "decoding" | "processing" | "encoding";
 
 export interface ProcessingInput {
@@ -39,10 +39,21 @@ export interface ImageResizeRequest {
   requestedLocation?: ProcessingLocation;
 }
 
-export type ProcessingRequest = ImageResizeRequest;
+export interface PdfExtractPagesRequest {
+  id: string;
+  category: "pdf";
+  operation: "pdf.extract-pages";
+  input: ProcessingInput;
+  options: {
+    pageSelection: string;
+  };
+  requestedLocation?: ProcessingLocation;
+}
+
+export type ProcessingRequest = ImageResizeRequest | PdfExtractPagesRequest;
 
 export interface ProcessingProgress {
-  stage: ProcessingStage;
+  stage: ProcessingStage | "reading-pages" | "writing-pdf";
   percentage: number | null;
 }
 
@@ -63,6 +74,8 @@ export interface ProcessingMetadata {
   width?: number;
   height?: number;
   format?: string;
+  pageCount?: number;
+  sourcePageCount?: number;
 }
 
 export interface ProcessingStatistics {
@@ -100,10 +113,12 @@ export interface FileProcessor<Request extends ProcessingRequest = ProcessingReq
 export interface ProcessingJob {
   id: string;
   file: File;
+  request: ProcessingRequest;
   status: JobStatus;
   progress: number | null;
   createdAt: number;
   options?: ResizeOptions;
+  result?: ProcessingResult;
   output?: Blob;
   outputName?: string;
   outputWidth?: number;

@@ -1,0 +1,17 @@
+{
+  "name": "@gsft/pdf-processor",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@gsft/core": "workspace:*",
+    "@gsft/shared": "workspace:*",
+    "pdf-lib": "^1.17.1"
+  }
+}

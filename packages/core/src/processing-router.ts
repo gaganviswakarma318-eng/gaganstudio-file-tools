@@ -23,20 +23,33 @@ export class ProcessingRouter {
     request: ProcessingRequest,
     context: ProcessingContext,
   ): Promise<ProcessingResult> {
+    const mimeSubtype = request.input.mimeType.split("/").pop()?.toLowerCase();
+    const extension = request.input.name.split(".").pop()?.toLowerCase();
     const compatible = this.processors.filter(
       ({ capability }) =>
         capability.category === request.category &&
         capability.operations.includes(request.operation) &&
         (!request.requestedLocation || capability.location === request.requestedLocation),
     );
-    const processor = compatible.find(({ capability }) => capability.available);
+    const processor = compatible.find(
+      ({ capability }) =>
+        capability.available &&
+        capability.inputFormats.some(
+          (format) =>
+            format.toLowerCase() === mimeSubtype || format.toLowerCase() === extension,
+        ),
+    );
 
     if (!processor) {
       const locationLabel = request.requestedLocation
         ? ` at ${request.requestedLocation}`
         : "";
-      const reason = compatible.find(({ capability }) => !capability.available)?.capability
-        .unavailableReason;
+      const reason =
+        compatible.find(({ capability }) => !capability.available)?.capability
+          .unavailableReason ??
+        (compatible.length > 0
+          ? `No processor accepts the ${request.input.mimeType || "unknown"} input format.`
+          : undefined);
       throw new ProcessorUnavailableError(
         reason ??
           `No available processor supports ${request.operation}${locationLabel}.`,
