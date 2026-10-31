@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
 import { readFile, readdir, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const platformExtensions = new Map([
@@ -17,7 +17,7 @@ async function sha256(filePath) {
   return hash.digest("hex");
 }
 
-async function createManifest(platform, directory) {
+export async function createManifest(platform, directory) {
   const extensions = platformExtensions.get(platform);
   if (!extensions) throw new Error(`Unsupported release platform: ${platform}`);
 
@@ -49,7 +49,7 @@ async function createManifest(platform, directory) {
   );
 }
 
-async function verifyManifests(directory) {
+export async function verifyManifests(directory) {
   const { version } = JSON.parse(await readFile(path.join(root, "package.json"), "utf8"));
   const expectedPlatforms = [...platformExtensions.keys()];
   const expectedAssets = new Set();
@@ -100,16 +100,18 @@ async function verifyManifests(directory) {
   }
 }
 
-const [mode, platformOrDirectory, maybeDirectory] = process.argv.slice(2);
-try {
-  if (mode === "create" && maybeDirectory) {
-    await createManifest(platformOrDirectory, path.resolve(maybeDirectory));
-  } else if (mode === "verify" && platformOrDirectory) {
-    await verifyManifests(path.resolve(platformOrDirectory));
-  } else {
-    throw new Error("Usage: node scripts/release-assets.mjs create <Windows|Linux|macOS> <directory> | verify <directory>");
+if (process.argv[1] && pathToFileURL(path.resolve(process.argv[1])).href === import.meta.url) {
+  const [mode, platformOrDirectory, maybeDirectory] = process.argv.slice(2);
+  try {
+    if (mode === "create" && maybeDirectory) {
+      await createManifest(platformOrDirectory, path.resolve(maybeDirectory));
+    } else if (mode === "verify" && platformOrDirectory) {
+      await verifyManifests(path.resolve(platformOrDirectory));
+    } else {
+      throw new Error("Usage: node scripts/release-assets.mjs create <Windows|Linux|macOS> <directory> | verify <directory>");
+    }
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : error);
+    process.exitCode = 1;
   }
-} catch (error) {
-  console.error(error instanceof Error ? error.message : error);
-  process.exitCode = 1;
 }

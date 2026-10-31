@@ -69,12 +69,12 @@ Browser-local PDF tools and local image resizing, compression, and format conver
 ## Validation status
 
 - `corepack pnpm typecheck` — passed across all workspaces.
-- `corepack pnpm test` — passed (41 tests), including PDF execution through the shared queue and extraction, splitting, merge, optimization, rotation, and page-order validation coverage.
+- `corepack pnpm test` — passed (46 tests), including PDF execution through the shared queue and extraction, splitting, merge, optimization, rotation, page-order validation, and release-manifest integrity coverage.
 - `corepack pnpm build:web` — passed; Vite emits separate image and PDF worker assets. The PDF library remains in its worker bundle.
 - `corepack pnpm test:e2e --workers=1` — passed (25 Chromium tests for metadata stripping/opt-in safe EXIF preservation, JPEG format warnings, animated GIF fidelity and safety limits, PDF operations, invalid inputs, downloads, and unavailable capabilities).
 - `corepack pnpm build:desktop` — passed; generated the Windows x64 NSIS installer and unpacked application. Linux AppImage and macOS DMG builds require their corresponding hosts.
 - Release workflow — configured for Windows NSIS, Linux AppImage, macOS DMG, and GitHub Release publication; signing activates only when complete platform credentials are configured. Hosted platform jobs have not yet run.
-- Release checksums — SHA-256 manifests are generated per platform and verified before publication; local fixture validation confirmed all three platforms and rejection of a tampered installer.
+- Release checksums — SHA-256 manifests are generated per platform and verified before publication; automated tests cover all three platform formats and reject tampered, missing, duplicate, or unmanifested files.
 - Electron development runtime — launched successfully after adding PDF processing; the application window displayed "GaganStudio File Tools".
 
 ## Next milestone
