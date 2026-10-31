@@ -23,7 +23,9 @@ Image exports strip metadata by default; opted-in metadata retention is limited 
 
 ## Desktop security boundary
 
-Electron enables context isolation and sandboxing and disables Node integration. The renderer currently uses the same browser worker pipeline as the web app; no native processor or file-system bridge is exposed yet. Native processing, native dialogs, and remote processing remain future work. The router and location/capability types provide a contract for adding these backends without exposing native commands to the renderer.
+Electron enables context isolation and sandboxing and disables Node integration. The isolated preload exposes only native file-open and file-save dialog methods. The main process validates the caller origin, filters open dialogs to supported image/PDF types, enforces the 250 MB per-file limit, and reads only user-selected files; saving always requires a user-selected destination and accepts only supported output MIME types. File bytes cross IPC as `ArrayBuffer` values. Processing still uses the same browser worker pipeline as the web app; no native processing or arbitrary filesystem access is exposed to the renderer. Remote processing remains future work.
+
+Electron Builder produces Windows NSIS installers, Linux AppImages, and macOS DMGs. Builds must run on a supported platform and may need network access for Electron Builder platform resources. Installers are not code-signed.
 
 ## Planned expansion
 

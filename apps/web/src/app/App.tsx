@@ -146,6 +146,21 @@ function App() {
     setNotice("");
   };
 
+  const browseImages = async () => {
+    if (!window.gsftDesktop) {
+      fileInput.current?.click();
+      return;
+    }
+    try {
+      const result = await window.gsftDesktop.openFiles("image", true);
+      if (!result.canceled) {
+        handleFiles(result.files.map((file) => new File([file.data], file.name, { type: file.mimeType })));
+      }
+    } catch (error) {
+      setNotice(`Could not open images: ${error instanceof Error ? error.message : "Unknown file dialog error."}`);
+    }
+  };
+
   const startProcessing = () => {
     if (!files.length) {
       setNotice("Add at least one image to get started.");
@@ -185,8 +200,16 @@ function App() {
     setFiles([]);
   };
 
-  const download = (job: ProcessingJob) => {
+  const download = async (job: ProcessingJob): Promise<string | undefined> => {
     if (!job.output || !job.outputName) return;
+    if (window.gsftDesktop) {
+      try {
+        await window.gsftDesktop.saveFile(job.outputName, job.output.type, await job.output.arrayBuffer());
+      } catch (error) {
+        return `Could not save the processed file: ${error instanceof Error ? error.message : "Unknown file dialog error."}`;
+      }
+      return;
+    }
     const url = URL.createObjectURL(job.output);
     const anchor = document.createElement("a");
     anchor.href = url;
@@ -243,6 +266,7 @@ function App() {
 
         <div className="content">
           {activeTool === "image" ? <>
+          {notice && <div className="notice" role="alert"><span>!</span>{notice}<button onClick={() => setNotice("")} aria-label="Dismiss">×</button></div>}
           <section className="page-heading">
             <div><div className="eyebrow">YOUR CREATIVE WORKSPACE</div><h1>{imageMode === "resize" ? "Make images fit." : imageMode === "compress" ? "Make images lighter." : "Change image formats."}</h1><p>{imageMode === "resize" ? "Resize and fine-tune your images — privately, right on your device." : imageMode === "compress" ? "Reduce image file sizes while preserving pixel dimensions — privately, right on your device." : "Convert PNG, JPEG, WebP, or GIF files while preserving pixel dimensions."}</p></div>
             <span className="heading-stamp">01 <span>/ 07</span></span>
@@ -251,11 +275,9 @@ function App() {
           <section className={`drop-zone${isDragging ? " dragging" : ""}`} onDragOver={(event) => { event.preventDefault(); setIsDragging(true); }} onDragLeave={() => setIsDragging(false)} onDrop={(event) => { event.preventDefault(); setIsDragging(false); handleFiles(event.dataTransfer.files); }}>
             <input ref={fileInput} className="visually-hidden" type="file" accept="image/*" multiple onChange={(event) => { if (event.target.files) handleFiles(event.target.files); event.target.value = ""; }} />
             <div className="upload-art" aria-hidden="true"><div className="upload-art-back" /><div className="upload-art-front"><span>↥</span><i /></div><div className="upload-sparkle">✳</div></div>
-            <div className="drop-copy"><h2>Drop your images here</h2><p>or <button className="text-button" onClick={() => fileInput.current?.click()}>browse files</button> from your device</p></div>
+            <div className="drop-copy"><h2>Drop your images here</h2><p>or <button className="text-button" onClick={() => void browseImages()}>browse files</button> from your device</p></div>
             <div className="drop-meta"><span>PNG</span><span>JPG</span><span>WEBP</span><i /> Up to 250 MB per file</div>
           </section>
-
-          {notice && <div className="notice" role="alert"><span>!</span>{notice}<button onClick={() => setNotice("")} aria-label="Dismiss">×</button></div>}
 
           {files.length > 0 && <section className="selected-files panel">
             <div className="section-title-row"><div><h3>Ready to {imageMode === "resize" ? "resize" : imageMode === "compress" ? "compress" : "convert"}</h3><span>{files.length} {files.length === 1 ? "image" : "images"} selected</span></div><button className="quiet-button" onClick={() => setFiles([])}>Clear all</button></div>
@@ -305,7 +327,10 @@ function App() {
             historyReady={historyReady}
             queuePaused={queuePaused}
             historyNotice={historyNotice}
-            onDownload={download}
+            onDownload={async (job) => {
+              const error = await download(job);
+              if (error) setNotice(error);
+            }}
           />
           </> : <PdfWorkspace
             manager={manager}
@@ -340,7 +365,7 @@ function PdfWorkspace({
   historyReady: boolean;
   queuePaused: boolean;
   historyNotice: string;
-  onDownload: (job: ProcessingJob) => void;
+  onDownload: (job: ProcessingJob) => void | Promise<string | void>;
   capabilityAvailable: boolean;
   unavailableReason?: string;
 }) {
@@ -386,6 +411,21 @@ function PdfWorkspace({
     setFile(next[0]);
     setRequestId(undefined);
     setLocalError("");
+  };
+
+  const browsePdfs = async () => {
+    if (!window.gsftDesktop) {
+      inputRef.current?.click();
+      return;
+    }
+    try {
+      const result = await window.gsftDesktop.openFiles("pdf", operation === "pdf.merge");
+      if (!result.canceled) {
+        selectFiles(result.files.map((file) => new File([file.data], file.name, { type: file.mimeType })));
+      }
+    } catch (error) {
+      setLocalError(`Could not open PDFs: ${error instanceof Error ? error.message : "Unknown file dialog error."}`);
+    }
   };
 
   const process = () => {
@@ -507,7 +547,7 @@ function PdfWorkspace({
         }}
       />
       <div className="upload-art" aria-hidden="true"><div className="upload-art-back" /><div className="upload-art-front"><span>▤</span><i /></div><div className="upload-sparkle">✳</div></div>
-      <div className="drop-copy"><h2>{file ? operation === "pdf.merge" && selectedFiles.length > 1 ? `${selectedFiles.length} PDFs selected` : file.name : operation === "pdf.merge" ? "Drop PDFs to merge" : "Drop a PDF here"}</h2><p>{file ? `${formatBytes(selectedSize)} · Original files will not be changed` : <>or <button className="text-button" onClick={() => inputRef.current?.click()}>browse files</button> from your device</>}</p></div>
+      <div className="drop-copy"><h2>{file ? operation === "pdf.merge" && selectedFiles.length > 1 ? `${selectedFiles.length} PDFs selected` : file.name : operation === "pdf.merge" ? "Drop PDFs to merge" : "Drop a PDF here"}</h2><p>{file ? `${formatBytes(selectedSize)} · Original files will not be changed` : <>or <button className="text-button" onClick={() => void browsePdfs()}>browse files</button> from your device</>}</p></div>
       <div className="drop-meta"><span>PDF</span><i /> Up to 250 MB total</div>
     </section>
 
@@ -551,7 +591,10 @@ function PdfWorkspace({
       historyReady={historyReady}
       queuePaused={queuePaused}
       historyNotice={historyNotice}
-      onDownload={onDownload}
+      onDownload={async (job) => {
+        const errorMessage = await onDownload(job);
+        if (typeof errorMessage === "string") setLocalError(errorMessage);
+      }}
     />
   </>;
 }
@@ -571,7 +614,7 @@ function QueuePanel({
   historyReady: boolean;
   queuePaused: boolean;
   historyNotice: string;
-  onDownload: (job: ProcessingJob) => void;
+  onDownload: (job: ProcessingJob) => void | Promise<string | void>;
 }) {
   const activeCount = jobs.filter((job) => job.status === "processing" || job.status === "validating").length;
   const completedCount = jobs.filter((job) => job.status === "completed").length;

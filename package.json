@@ -10,7 +10,8 @@
     "dev:desktop": "corepack pnpm --filter @gsft/web dev --host 127.0.0.1 --port 4173 --strictPort",
     "desktop:dev": "concurrently -k -s first \"corepack pnpm dev:desktop\" \"wait-on http://127.0.0.1:4173 && electron .\"",
     "build:web": "corepack pnpm --filter @gsft/web build",
-    "build:desktop": "corepack pnpm build:web && electron-builder --dir",
+    "build:desktop": "corepack pnpm build:web && corepack enable pnpm --install-directory node_modules/.bin && electron-builder",
+    "build:desktop:dir": "corepack pnpm build:web && corepack enable pnpm --install-directory node_modules/.bin && electron-builder --dir",
     "typecheck": "corepack pnpm -r typecheck",
     "test": "vitest run",
     "test:e2e": "playwright test",
@@ -41,11 +42,21 @@
       "main": "apps/desktop/electron/main.cjs"
     },
     "win": {
-      "target": "nsis"
+      "target": "nsis",
+      "artifactName": "${productName}-${version}-Setup.${ext}"
     },
     "linux": {
       "target": "AppImage",
       "category": "Utility"
+    },
+    "mac": {
+      "target": "dmg",
+      "category": "public.app-category.utilities"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true
     }
   }
 }

@@ -27,6 +27,8 @@ Browser-local PDF tools and local image resizing, compression, and format conver
 - GIF decoding and output are bounded by 300 frames, 20 million source-canvas pixels, 50 million decoded frame-patch pixels, 100 million output frame pixels, and 250 MB of generated output.
 - Image metadata is stripped by default; opt-in preservation supports selected camera/capture EXIF fields for JPEG-to-JPEG jobs, excludes GPS, orientation, thumbnails, comments, and device identifiers, and is capped at 32 MB per JPEG.
 - Processing history is stored locally in IndexedDB, bounded to 50 jobs or 250 MB of source/output data, and supports interrupted-job recovery, retry, removal, history clearing, and queue pause/resume controls across image and PDF workspaces.
+- Electron exposes restricted native open/save dialogs through an isolated preload; the main process only reads user-selected image/PDF files and writes outputs to a user-selected destination.
+- Electron Builder is configured to create Windows NSIS, Linux AppImage, and macOS DMG packages; builds are unsigned.
 - Dedicated module Web Worker using `createImageBitmap` and `OffscreenCanvas`; the UI thread remains available during decode, draw, and encode.
 - Queue results show source/output dimensions and byte sizes, with a savings percentage when output is smaller.
 - Completed jobs include managed before/after image previews with dimensions and file sizes.
@@ -40,7 +42,7 @@ Browser-local PDF tools and local image resizing, compression, and format conver
 
 ## In progress / not implemented
 
-- Production desktop packaging and native open/save dialogs; Electron Builder packaging was attempted but its network fetch was denied in this environment.
+- Validate Linux AppImage and macOS DMG builds on their supported hosts; configure code signing/notarization and release automation.
 - Additional PDF operations; document, video, audio, archive, and remote processing.
 - Explicit remote-processing consent flow and remote processor.
 
@@ -67,12 +69,12 @@ Browser-local PDF tools and local image resizing, compression, and format conver
 ## Validation status
 
 - `corepack pnpm typecheck` — passed across all workspaces.
-- `corepack pnpm test` — passed (39 tests), including PDF execution through the shared queue and extraction, splitting, merge, optimization, rotation, and page-order validation coverage.
+- `corepack pnpm test` — passed (41 tests), including PDF execution through the shared queue and extraction, splitting, merge, optimization, rotation, and page-order validation coverage.
 - `corepack pnpm build:web` — passed; Vite emits separate image and PDF worker assets. The PDF library remains in its worker bundle.
-- `corepack pnpm test:e2e --workers=1` — passed (23 Chromium tests for metadata stripping/opt-in safe EXIF preservation, JPEG format warnings, animated GIF fidelity and safety limits, PDF operations, invalid inputs, downloads, and unavailable capabilities).
-- `corepack pnpm build:desktop` — web build passed, but Electron Builder could not finish because its platform-resource download failed with network `EACCES`.
+- `corepack pnpm test:e2e --workers=1` — passed (25 Chromium tests for metadata stripping/opt-in safe EXIF preservation, JPEG format warnings, animated GIF fidelity and safety limits, PDF operations, invalid inputs, downloads, and unavailable capabilities).
+- `corepack pnpm build:desktop` — passed; generated the Windows x64 NSIS installer and unpacked application. Linux AppImage and macOS DMG builds require their corresponding hosts.
 - Electron development runtime — launched successfully after adding PDF processing; the application window displayed "GaganStudio File Tools".
 
 ## Next milestone
 
-Complete production desktop packaging and native open/save dialogs.
+Code signing/notarization and production release automation.
