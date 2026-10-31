@@ -11,7 +11,7 @@ type WorkerResponse = ProcessingResult | { requestId: string; error: string };
 export function createBrowserImageProcessor(): FileProcessor<ImageProcessingRequest> {
   const capability = detectProcessingCapabilities()[0];
   if (!capability) {
-    throw new Error("Browser image resize capability detection returned no result.");
+    throw new Error("Browser image capability detection returned no result.");
   }
 
   return {

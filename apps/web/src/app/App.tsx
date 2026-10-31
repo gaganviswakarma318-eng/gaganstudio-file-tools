@@ -3,6 +3,7 @@ import { JobManager, ProcessingRouter } from "@gsft/core";
 import type {
   ImageFormat,
   ImageCompressRequest,
+  ImageConvertRequest,
   PdfCompressRequest,
   PdfExtractPagesRequest,
   PdfMergeRequest,
@@ -29,7 +30,7 @@ const navItems = [
 const tools = [
   { icon: "↔", title: "Image resizer", detail: "Resize without leaving your device", mode: "resize" },
   { icon: "✦", title: "Image compressor", detail: "Reduce file size with quality control", mode: "compress" },
-  { icon: "⇄", title: "Format converter", detail: "JPG, PNG and WebP", mode: null },
+  { icon: "⇄", title: "Format converter", detail: "JPG, PNG and WebP", mode: "convert" },
 ] as const;
 
 const formatLabels: Record<ImageFormat, string> = { png: "PNG", jpeg: "JPEG", webp: "WebP" };
@@ -42,7 +43,7 @@ function formatBytes(bytes: number): string {
 
 function App() {
   const [activeTool, setActiveTool] = useState<"image" | "pdf">("image");
-  const [imageMode, setImageMode] = useState<"resize" | "compress">("resize");
+  const [imageMode, setImageMode] = useState<"resize" | "compress" | "convert">("resize");
   const [theme, setTheme] = useState<"light" | "dark" | "system">("system");
   const [files, setFiles] = useState<File[]>([]);
   const [jobs, setJobs] = useState<ProcessingJob[]>([]);
@@ -96,7 +97,7 @@ function App() {
     }
     if (imageMode === "resize") {
       manager.enqueue(files, options);
-    } else {
+    } else if (imageMode === "compress") {
       for (const file of files) {
         const request: ImageCompressRequest = {
           id: crypto.randomUUID(),
@@ -104,6 +105,18 @@ function App() {
           operation: "image.compress",
           input: { name: file.name, mimeType: file.type, data: file },
           options: { format: format === "png" ? "webp" : format, quality },
+          requestedLocation: "browser",
+        };
+        manager.enqueueRequest(request, file);
+      }
+    } else {
+      for (const file of files) {
+        const request: ImageConvertRequest = {
+          id: crypto.randomUUID(),
+          category: "image",
+          operation: "image.convert",
+          input: { name: file.name, mimeType: file.type, data: file },
+          options: { format, quality },
           requestedLocation: "browser",
         };
         manager.enqueueRequest(request, file);
@@ -171,7 +184,7 @@ function App() {
         <div className="content">
           {activeTool === "image" ? <>
           <section className="page-heading">
-            <div><div className="eyebrow">YOUR CREATIVE WORKSPACE</div><h1>{imageMode === "resize" ? "Make images fit." : "Make images lighter."}</h1><p>{imageMode === "resize" ? "Resize, convert, and fine-tune your images — privately, right on your device." : "Reduce image file sizes while preserving pixel dimensions — privately, right on your device."}</p></div>
+            <div><div className="eyebrow">YOUR CREATIVE WORKSPACE</div><h1>{imageMode === "resize" ? "Make images fit." : imageMode === "compress" ? "Make images lighter." : "Change image formats."}</h1><p>{imageMode === "resize" ? "Resize and fine-tune your images — privately, right on your device." : imageMode === "compress" ? "Reduce image file sizes while preserving pixel dimensions — privately, right on your device." : "Convert PNG, JPEG, and WebP files while preserving pixel dimensions."}</p></div>
             <span className="heading-stamp">01 <span>/ 07</span></span>
           </section>
 
@@ -185,13 +198,13 @@ function App() {
           {notice && <div className="notice" role="alert"><span>!</span>{notice}<button onClick={() => setNotice("")} aria-label="Dismiss">×</button></div>}
 
           {files.length > 0 && <section className="selected-files panel">
-            <div className="section-title-row"><div><h3>Ready to {imageMode === "resize" ? "resize" : "compress"}</h3><span>{files.length} {files.length === 1 ? "image" : "images"} selected</span></div><button className="quiet-button" onClick={() => setFiles([])}>Clear all</button></div>
+            <div className="section-title-row"><div><h3>Ready to {imageMode === "resize" ? "resize" : imageMode === "compress" ? "compress" : "convert"}</h3><span>{files.length} {files.length === 1 ? "image" : "images"} selected</span></div><button className="quiet-button" onClick={() => setFiles([])}>Clear all</button></div>
             <div className="file-list">{files.map((file, index) => <div className="file-row" key={`${file.name}-${index}`}><div className="file-type-icon">▧</div><div className="file-name"><strong>{file.name}</strong><span>{file.type || "Image"} · {formatBytes(file.size)}</span></div><button className="remove-button" onClick={() => setFiles((items) => items.filter((_, itemIndex) => itemIndex !== index))} aria-label={`Remove ${file.name}`}>×</button></div>)}</div>
           </section>}
 
           <div className="workbench-grid">
             <section className="panel settings-panel">
-              <div className="section-title-row"><div><h3>{imageMode === "resize" ? "Resize settings" : "Compression settings"}</h3><span>{imageMode === "resize" ? "Choose your output dimensions and format" : "Keep original dimensions and tune output quality"}</span></div><span className="settings-badge">{imageMode === "resize" ? "RESIZE" : "COMPRESS"}</span></div>
+              <div className="section-title-row"><div><h3>{imageMode === "resize" ? "Resize settings" : imageMode === "compress" ? "Compression settings" : "Conversion settings"}</h3><span>{imageMode === "resize" ? "Choose your output dimensions and format" : imageMode === "compress" ? "Keep original dimensions and tune output quality" : "Choose the format to convert your images into"}</span></div><span className="settings-badge">{imageMode === "resize" ? "RESIZE" : imageMode === "compress" ? "COMPRESS" : "CONVERT"}</span></div>
               {imageMode === "resize" && <>
               <div className="preset-row"><span className="field-label">QUICK PRESETS</span><div className="presets"><button onClick={() => { setWidth(3840); setHeight(2160); }}>4K</button><button onClick={() => { setWidth(1920); setHeight(1080); }}>Full HD</button><button onClick={() => { setWidth(1280); setHeight(720); }}>HD</button><button onClick={() => { setWidth(854); setHeight(480); }}>480p</button></div></div>
               <div className="dimension-row">
@@ -210,8 +223,8 @@ function App() {
               {format === "jpeg" && <p className="format-note">Transparent areas are filled with white in JPEG output.</p>}
               {imageMode === "resize" && <label className="check-option"><input type="checkbox" checked={preventEnlargement} onChange={(event) => setPreventEnlargement(event.target.checked)} /><span>Prevent enlargement</span><span className="help-dot" title="Images smaller than the selected dimensions keep their original size.">?</span></label>}
               {!imageResizeCapability.available && <p className="capability-warning" role="status">{imageResizeCapability.unavailableReason}</p>}
-              <button className="primary-button" onClick={startProcessing} disabled={!imageResizeCapability.available}><span>{imageMode === "resize" ? "Resize" : "Compress"} {files.length ? `${files.length} ${files.length === 1 ? "image" : "images"}` : "images"}</span><span>↗</span></button>
-              <p className="privacy-note"><span>◈</span> Images are processed locally. Export removes image metadata{imageMode === "compress" ? " and preserves pixel dimensions." : "."}</p>
+              <button className="primary-button" onClick={startProcessing} disabled={!imageResizeCapability.available}><span>{imageMode === "resize" ? "Resize" : imageMode === "compress" ? "Compress" : "Convert"} {files.length ? `${files.length} ${files.length === 1 ? "image" : "images"}` : "images"}</span><span>↗</span></button>
+              <p className="privacy-note"><span>◈</span> Images are processed locally. Export removes image metadata{imageMode !== "resize" ? " and preserves pixel dimensions." : "."}{imageMode === "convert" && format === "jpeg" ? " Transparent areas become white in JPEG." : ""}</p>
             </section>
 
             <aside className="panel tools-panel">
@@ -478,11 +491,22 @@ function PdfWorkspace({
 
 function QueueRow({ job, onCancel, onDownload }: { job: ProcessingJob; onCancel: () => void; onDownload: () => void }) {
   const isComplete = job.status === "completed" && Boolean(job.output);
-  const isCompression = job.request.operation === "image.compress";
+  const operationName =
+    job.request.operation === "image.compress"
+      ? "compression"
+      : job.request.operation === "image.convert"
+        ? "conversion"
+        : "resize";
+  const outputLabel =
+    job.request.operation === "image.compress"
+      ? "Compressed"
+      : job.request.operation === "image.convert"
+        ? "Converted"
+        : "Resized";
   const sourceSize = job.sourceSize ?? job.file.size;
   const details = isComplete
     ? `${job.sourceWidth} × ${job.sourceHeight} → ${job.outputWidth} × ${job.outputHeight} · ${formatBytes(sourceSize)} → ${formatBytes(job.output!.size)}${job.output!.size < sourceSize ? ` · ${Math.round((1 - job.output!.size / sourceSize) * 100)}% smaller` : ""}`
-    : `${formatBytes(job.file.size)}${isCompression ? "" : ` · ${job.options && "width" in job.options ? `${job.options.width} × ${job.options.height}` : "?"}`} · ${job.status === "processing" || job.status === "validating" ? `${isCompression ? "Compressing" : "Resizing"} locally in background` : `Queued for ${isCompression ? "compression" : "resize"}`}`;
+    : `${formatBytes(job.file.size)}${job.request.operation === "image.resize" ? ` · ${job.options && "width" in job.options ? `${job.options.width} × ${job.options.height}` : "?"}` : ""} · ${job.status === "processing" || job.status === "validating" ? `${operationName[0]?.toUpperCase()}${operationName.slice(1)} locally in background` : `Queued for ${operationName}`}`;
 
   return <div className="queue-item">
     <div className="queue-row">
@@ -494,7 +518,7 @@ function QueueRow({ job, onCancel, onDownload }: { job: ProcessingJob; onCancel:
       {job.error && <div className="job-error" role="alert">{job.error}</div>}
       {job.warnings?.map((warning) => <div className="job-warning" key={warning} role="status">{warning}</div>)}
     </div>
-    {isComplete && job.output && <ImageComparison file={job.file} output={job.output} sourceWidth={job.sourceWidth ?? 0} sourceHeight={job.sourceHeight ?? 0} outputWidth={job.outputWidth ?? 0} outputHeight={job.outputHeight ?? 0} outputLabel={isCompression ? "Compressed" : "Resized"} />}
+    {isComplete && job.output && <ImageComparison file={job.file} output={job.output} sourceWidth={job.sourceWidth ?? 0} sourceHeight={job.sourceHeight ?? 0} outputWidth={job.outputWidth ?? 0} outputHeight={job.outputHeight ?? 0} outputLabel={outputLabel} />}
   </div>;
 }
 

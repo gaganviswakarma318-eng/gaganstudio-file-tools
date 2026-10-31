@@ -4,7 +4,7 @@ Updated: 2026-10-31
 
 ## Current milestone
 
-Browser-local PDF tools and local image resizing/compression behind the shared processing contract.
+Browser-local PDF tools and local image resizing, compression, and format conversion behind the shared processing contract.
 
 ## Implemented
 
@@ -22,6 +22,7 @@ Browser-local PDF tools and local image resizing/compression behind the shared p
 - Separate PDF workspace with local-only messaging, operation selection, cancel control, result details, and download; PDF jobs use the shared cancellable queue and source files are never overwritten.
 - Browser image resizing for PNG, JPEG, and WebP with inside, cover/crop, fill, quality, and prevent-enlargement settings.
 - Independent image compression through quality-controlled JPEG or WebP encoding; source pixel dimensions are preserved and processing remains in the image worker and shared queue.
+- Image format conversion between PNG, JPEG, and WebP while preserving source pixel dimensions, using the same cancellable local worker queue.
 - Dedicated module Web Worker using `createImageBitmap` and `OffscreenCanvas`; the UI thread remains available during decode, draw, and encode.
 - Queue results show source/output dimensions and byte sizes, with a savings percentage when output is smaller.
 - Completed jobs include managed before/after image previews with dimensions and file sizes.
@@ -48,6 +49,7 @@ Browser-local PDF tools and local image resizing/compression behind the shared p
 - AVIF/TIFF detection is informational; decoding depends on the browser.
 - Canvas exports strip metadata. JPEG output uses a white background; PNG/WebP retain alpha.
 - Image compression changes encoding to JPEG or WebP and can be lossy; it preserves pixel dimensions but may not reduce every source file's size.
+- Image conversion to JPEG/WebP can be lossy and JPEG conversion flattens transparency against white; all conversions strip metadata.
 - PDF page extraction may not preserve interactive forms, document-level attachments, or cross-page navigation.
 - PDF merge and optimization may not preserve interactive forms, document-level attachments, or cross-page navigation. Optimization may not reduce file size.
 - PDF rotation changes the page display orientation without modifying page content.
@@ -61,10 +63,10 @@ Browser-local PDF tools and local image resizing/compression behind the shared p
 - `corepack pnpm typecheck` — passed across all workspaces.
 - `corepack pnpm test` — passed (39 tests), including PDF execution through the shared queue and extraction, splitting, merge, optimization, rotation, and page-order validation coverage.
 - `corepack pnpm build:web` — passed; Vite emits separate image and PDF worker assets. The PDF library remains in its worker bundle.
-- `corepack pnpm test:e2e` — passed (13 Chromium tests for image resizing/compression, PDF operations, invalid inputs, downloads, and unavailable capabilities).
+- `corepack pnpm test:e2e` — passed (14 Chromium tests for image resizing, compression and format conversion, PDF operations, invalid inputs, downloads, and unavailable capabilities).
 - `corepack pnpm build:desktop` — web build passed, but Electron Builder could not finish because its platform-resource download failed with network `EACCES`.
 - Electron development runtime — launched successfully after adding PDF processing; the application window displayed "GaganStudio File Tools".
 
 ## Next milestone
 
-Review the PDF toolset and plan the next non-PDF processor milestone behind the shared processing contract.
+Review animated-image processing tradeoffs and introduce support only when animation can be preserved end to end.

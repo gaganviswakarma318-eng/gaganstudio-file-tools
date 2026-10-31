@@ -2,7 +2,7 @@
 
 **One workspace. Every file.**
 
-GaganStudio File Tools (GSFT) is a local-first workspace for resizing, compressing, converting, and managing files. This repository is under active development; the current milestone provides browser-local image resizing and compression, plus PDF extraction, splitting, merge, page rotation and reordering, and lossless structural optimization in the web application and Electron shell.
+GaganStudio File Tools (GSFT) is a local-first workspace for resizing, compressing, converting, and managing files. This repository is under active development; the current milestone provides browser-local image resizing, compression, and format conversion, plus PDF extraction, splitting, merge, page rotation and reordering, and lossless structural optimization in the web application and Electron shell.
 
 ## Requirements
 
@@ -29,6 +29,7 @@ Build the web app with `corepack pnpm build:web`, run unit tests with `corepack 
 - Select or drop multiple image files; file type is checked from its contents.
 - Resize locally in a Web Worker with aspect-ratio lock, fit/cover/fill, and PNG/JPEG/WebP output.
 - Compress images independently of resizing, preserving pixel dimensions with quality-controlled JPEG or WebP output.
+- Convert between PNG, JPEG, and WebP without changing pixel dimensions.
 - Compare original and resized previews, dimensions, and file sizes; process through a cancellable queue and download results.
 - Extract, split, rotate, or reorder PDF pages, merge multiple PDFs in selected order, or apply lossless structural PDF optimization; original documents are never overwritten.
 - Shared processing contracts, capability-aware routing, and browser API availability messages.
@@ -36,6 +37,6 @@ Build the web app with `corepack pnpm build:web`, run unit tests with `corepack 
 
 Install the Playwright test browser once with `corepack pnpm exec playwright install chromium`.
 
-Image resizing, image compression, and PDF operations run in browser Web Workers. Image operations additionally require `createImageBitmap` and `OffscreenCanvas`; exports do not preserve image metadata or animated GIF frames. Compression preserves pixel dimensions but re-encodes to lossy JPEG or WebP, so smaller files are not guaranteed. PDF inputs are limited to 250 MB per file; merge supports up to 50 files and 250 MB total. Splitting bundles at most 200 PDFs and 250 MB of generated PDF data into one ZIP. Page reordering requires every page exactly once, with a maximum of 20,000 pages. `pdf-lib` may not preserve interactive forms, attachments, or cross-page navigation. PDF rotation changes page display orientation without modifying page content. PDF optimization uses lossless structural reserialization and does not recompress embedded images, so reduced file size is not guaranteed. AVIF and TIFF detection is informational; decode support depends on the browser. Other document, video, audio, archive, remote processing, and production installers are not implemented yet. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the current processing flow and security boundaries.
+Image resizing, compression, conversion, and PDF operations run in browser Web Workers. Image operations additionally require `createImageBitmap` and `OffscreenCanvas`; exports do not preserve image metadata or animated GIF frames. Compression preserves pixel dimensions but re-encodes to lossy JPEG or WebP, so smaller files are not guaranteed. Conversion supports PNG, JPEG, and WebP; JPEG conversion flattens transparency against white, and JPEG/WebP quality may be lossy. PDF inputs are limited to 250 MB per file; merge supports up to 50 files and 250 MB total. Splitting bundles at most 200 PDFs and 250 MB of generated PDF data into one ZIP. Page reordering requires every page exactly once, with a maximum of 20,000 pages. `pdf-lib` may not preserve interactive forms, attachments, or cross-page navigation. PDF rotation changes page display orientation without modifying page content. PDF optimization uses lossless structural reserialization and does not recompress embedded images, so reduced file size is not guaranteed. AVIF and TIFF detection is informational; decode support depends on the browser. Other document, video, audio, archive, remote processing, and production installers are not implemented yet. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the current processing flow and security boundaries.
 
 See [docs/PROJECT_STATUS.md](docs/PROJECT_STATUS.md) for phase tracking and known limitations.

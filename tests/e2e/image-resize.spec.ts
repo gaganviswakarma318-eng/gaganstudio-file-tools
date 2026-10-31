@@ -134,6 +134,32 @@ test("warns when compression would increase a small image's file size", async ({
   );
 });
 
+test("converts an image format in a worker while keeping its dimensions", async ({ page }) => {
+  const fixture = await createPngFixture(page);
+  await page.getByRole("button", { name: /Format converter/ }).click();
+  await page.locator('input[type="file"]').setInputFiles({
+    name: "two-colors.png",
+    mimeType: "image/png",
+    buffer: fixture,
+  });
+  await page.getByLabel("Output format").selectOption("jpeg");
+  await page.getByRole("button", { name: "Convert 1 image" }).click();
+
+  const comparison = page.getByRole("region", { name: "Before and after comparison" });
+  await expect(comparison).toBeVisible();
+  await expect(comparison).toContainText("48 × 32");
+  await expect(comparison.getByRole("img", { name: "Converted image preview" })).toHaveJSProperty(
+    "naturalWidth",
+    48,
+  );
+  await expect(comparison).toContainText("48 × 32 ·");
+
+  const downloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Download" }).click();
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toBe("two-colors-converted.jpg");
+});
+
 test("explains and disables image processing when worker support is missing", async ({ page }) => {
   await page.addInitScript(() => {
     Object.defineProperty(globalThis, "Worker", { value: undefined, configurable: true });

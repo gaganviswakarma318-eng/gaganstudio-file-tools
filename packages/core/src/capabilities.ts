@@ -36,14 +36,14 @@ export function detectProcessingCapabilities(
     {
       id: "browser.image",
       category: "image",
-      operations: ["image.resize", "image.compress"],
+      operations: ["image.resize", "image.compress", "image.convert"],
       location: "browser",
       inputFormats: ["JPEG", "PNG", "WebP"],
       outputFormats: ["JPEG", "PNG", "WebP"],
       requirements: requirements.map(({ label }) => label),
       available: missing.length === 0,
       ...(missing.length > 0
-        ? { unavailableReason: `Image resizing requires ${missing.join(", ")}.` }
+        ? { unavailableReason: `Image processing requires ${missing.join(", ")}.` }
         : {}),
     },
   ];

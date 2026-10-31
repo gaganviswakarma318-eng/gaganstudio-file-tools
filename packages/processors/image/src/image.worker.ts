@@ -12,7 +12,7 @@ self.onmessage = async (event: MessageEvent<ImageProcessingRequest>) => {
     await validateImageFile(input.data);
     const detected = await detectImageFile(input.data);
     if (detected?.format === "gif") {
-      throw new Error("GIF resizing is unavailable because exporting would remove animation.");
+      throw new Error("Animated GIF processing is unavailable because exporting would remove animation.");
     }
     if (!Number.isFinite(options.quality) || options.quality < 1 || options.quality > 100) {
       throw new Error("Quality must be between 1 and 100.");
@@ -20,8 +20,7 @@ self.onmessage = async (event: MessageEvent<ImageProcessingRequest>) => {
 
     source = await createImageBitmap(input.data);
     validateImageDimensions(source.width, source.height);
-    const resizeOptions =
-      request.operation === "image.resize" ? request.options : undefined;
+    const resizeOptions = request.operation === "image.resize" ? request.options : undefined;
     if (resizeOptions) validateImageDimensions(resizeOptions.width, resizeOptions.height);
     let width = source.width;
     let height = source.height;
@@ -74,7 +73,7 @@ self.onmessage = async (event: MessageEvent<ImageProcessingRequest>) => {
       location: "browser",
       output: {
         data: output,
-        name: `${input.name.replace(/\.[^.]+$/, "") || "image"}-${resizeOptions ? "resized" : "compressed"}.${options.format === "jpeg" ? "jpg" : options.format}`,
+        name: `${input.name.replace(/\.[^.]+$/, "") || "image"}-${request.operation === "image.resize" ? "resized" : request.operation === "image.compress" ? "compressed" : "converted"}.${options.format === "jpeg" ? "jpg" : options.format}`,
         mimeType: MIME_TYPES[options.format],
       },
       metadata: {
@@ -90,8 +89,8 @@ self.onmessage = async (event: MessageEvent<ImageProcessingRequest>) => {
         durationMs: Math.max(0, Math.round(performance.now() - startedAt)),
       },
       warnings:
-        request.operation === "image.compress" && output.size >= input.data.size
-          ? ["The compressed output is not smaller than the original. Try a lower quality or another format."]
+        request.operation !== "image.resize" && output.size >= input.data.size
+          ? [`The ${request.operation === "image.compress" ? "compressed" : "converted"} output is not smaller than the original.`]
           : [],
     };
     self.postMessage(result);

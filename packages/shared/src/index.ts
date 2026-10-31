@@ -24,11 +24,17 @@ export interface ImageCompressOptions {
   quality: number;
 }
 
+export interface ImageConvertOptions {
+  format: ImageFormat;
+  quality: number;
+}
+
 export type FileCategory = "image" | "pdf" | "document" | "video" | "audio" | "archive";
 export type ProcessingLocation = "browser" | "desktop" | "remote";
 export type ProcessingOperation =
   | "image.resize"
   | "image.compress"
+  | "image.convert"
   | "pdf.extract-pages"
   | "pdf.merge"
   | "pdf.compress"
@@ -61,7 +67,19 @@ export interface ImageCompressRequest {
   requestedLocation?: ProcessingLocation;
 }
 
-export type ImageProcessingRequest = ImageResizeRequest | ImageCompressRequest;
+export interface ImageConvertRequest {
+  id: string;
+  category: "image";
+  operation: "image.convert";
+  input: ProcessingInput;
+  options: ImageConvertOptions;
+  requestedLocation?: ProcessingLocation;
+}
+
+export type ImageProcessingRequest =
+  | ImageResizeRequest
+  | ImageCompressRequest
+  | ImageConvertRequest;
 
 export interface PdfExtractPagesRequest {
   id: string;
@@ -206,7 +224,7 @@ export interface ProcessingJob {
   status: JobStatus;
   progress: number | null;
   createdAt: number;
-  options?: ResizeOptions | ImageCompressOptions;
+  options?: ResizeOptions | ImageCompressOptions | ImageConvertOptions;
   result?: ProcessingResult;
   output?: Blob;
   outputName?: string;
