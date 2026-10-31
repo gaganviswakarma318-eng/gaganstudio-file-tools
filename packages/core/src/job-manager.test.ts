@@ -102,6 +102,62 @@ describe("JobManager", () => {
     manager.resume();
   });
 
+  it("restores interrupted jobs as retryable and retries with a new request ID", async () => {
+    const process = vi.fn(async (request: ImageResizeRequest) => createResult(request));
+    const manager = new JobManager(new ProcessingRouter([createProcessor(process)]));
+    const file = imageFile();
+    const request: ImageResizeRequest = {
+      id: "interrupted-job",
+      category: "image",
+      operation: "image.resize",
+      input: { name: file.name, mimeType: file.type, data: file },
+      options,
+    };
+
+    manager.restore([{
+      id: request.id,
+      file,
+      request,
+      status: "processing",
+      progress: 42,
+      createdAt: 1,
+    }]);
+
+    expect(manager.getJobs()[0]).toMatchObject({
+      status: "failed",
+      progress: null,
+      error: expect.stringContaining("interrupted"),
+    });
+
+    const retriedId = manager.retry(request.id);
+    expect(retriedId).not.toBe(request.id);
+    await vi.waitFor(() => expect(manager.getJobs().find((job) => job.id === retriedId)?.status).toBe("completed"));
+    expect(process).toHaveBeenCalledOnce();
+    expect(manager.getJobs()).toHaveLength(2);
+  });
+
+  it("removes only terminal jobs from history", () => {
+    const manager = new JobManager(new ProcessingRouter([
+      createProcessor(async (request) => createResult(request)),
+    ]));
+    const file = imageFile();
+    const request: ImageResizeRequest = {
+      id: "queued-job",
+      category: "image",
+      operation: "image.resize",
+      input: { name: file.name, mimeType: file.type, data: file },
+      options,
+    };
+    manager.pause();
+    manager.enqueueRequest(request, file);
+    manager.remove(request.id);
+    expect(manager.getJobs()).toHaveLength(1);
+    manager.cancel(request.id);
+    manager.remove(request.id);
+    expect(manager.getJobs()).toHaveLength(0);
+    manager.resume();
+  });
+
   it("runs PDF extraction as a cancellable queue job through the shared router", async () => {
     const pdfFile = new File(["pdf-input"], "source.pdf", { type: "application/pdf" });
     const request: PdfExtractPagesRequest = {

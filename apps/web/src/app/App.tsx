@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { JobManager, ProcessingRouter } from "@gsft/core";
+import { IndexedDbJobHistory, JobManager, ProcessingRouter } from "@gsft/core";
 import type {
   ImageFormat,
   ImageCompressRequest,
@@ -61,7 +61,12 @@ function App() {
   const [preserveMetadata, setPreserveMetadata] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [notice, setNotice] = useState("");
+  const [historyNotice, setHistoryNotice] = useState("");
+  const [historyReady, setHistoryReady] = useState(false);
+  const [historyAvailable, setHistoryAvailable] = useState(false);
+  const [queuePaused, setQueuePaused] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
+  const persistenceRef = useRef(Promise.resolve());
   const options = useMemo<ResizeOptions>(
     () => ({ width, height, fit, format, quality, preventEnlargement, preserveMetadata }),
     [width, height, fit, format, quality, preventEnlargement, preserveMetadata],
@@ -79,8 +84,53 @@ function App() {
     () => new JobManager(router),
     [router],
   );
+  const history = useMemo(() => new IndexedDbJobHistory(), []);
 
-  useEffect(() => manager.subscribe(setJobs), [manager]);
+  useEffect(() => {
+    let cancelled = false;
+    let unsubscribe: (() => void) | undefined;
+    const subscribe = () => {
+      unsubscribe = manager.subscribe((snapshot) => {
+        setJobs(snapshot);
+        setQueuePaused(manager.paused);
+      });
+    };
+
+    void history.load().then((restored) => {
+      if (cancelled) return;
+      manager.restore(restored);
+      setHistoryAvailable(true);
+      subscribe();
+      setHistoryReady(true);
+    }).catch((error: unknown) => {
+      if (cancelled) return;
+      setHistoryAvailable(false);
+      setHistoryNotice(`Persistent history could not be loaded: ${error instanceof Error ? error.message : "Unknown storage error."}`);
+      subscribe();
+      setHistoryReady(true);
+    });
+
+    return () => {
+      cancelled = true;
+      unsubscribe?.();
+    };
+  }, [history, manager]);
+
+  useEffect(() => {
+    if (!historyReady || !historyAvailable) return;
+    const timeout = window.setTimeout(() => {
+      persistenceRef.current = persistenceRef.current.then(async () => {
+        const omitted = await history.save(jobs);
+        setHistoryNotice(omitted
+          ? "History retention is limited to 50 jobs and 250 MB; older or oversized jobs are not retained."
+          : "");
+      }).catch((error: unknown) => {
+        setHistoryAvailable(false);
+        setHistoryNotice(`Persistent history could not be saved: ${error instanceof Error ? error.message : "Unknown storage error."}`);
+      });
+    }, 250);
+    return () => window.clearTimeout(timeout);
+  }, [history, historyAvailable, historyReady, jobs]);
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
   }, [theme]);
@@ -248,13 +298,22 @@ function App() {
             </aside>
           </div>
 
-          <section className="queue-section">
-            <div className="queue-heading"><div><div className="queue-overline">YOUR WORKSPACE <span>·</span> LIVE</div><h2>Processing queue</h2></div><div className="queue-summary">{activeCount > 0 ? <><span className="pulse-dot" />{activeCount} in progress</> : <>{completedCount} completed</>}</div></div>
-            {jobs.length === 0 ? <div className="queue-empty"><div className="empty-stack"><span>▤</span><i>✓</i></div><div><strong>Nothing in the queue — yet</strong><p>Your image jobs and finished downloads will show up here.</p></div><span className="empty-queue-label">READY WHEN YOU ARE</span></div> : <div className="queue-list">{jobs.map((job) => <QueueRow key={job.id} job={job} onCancel={() => manager.cancel(job.id)} onDownload={() => download(job)} />)}</div>}
-          </section>
+          <QueuePanel
+            title="Processing queue"
+            jobs={jobs.filter((job) => job.request.category === "image")}
+            manager={manager}
+            historyReady={historyReady}
+            queuePaused={queuePaused}
+            historyNotice={historyNotice}
+            onDownload={download}
+          />
           </> : <PdfWorkspace
             manager={manager}
             jobs={jobs}
+            historyReady={historyReady}
+            queuePaused={queuePaused}
+            historyNotice={historyNotice}
+            onDownload={download}
             capabilityAvailable={pdfExtractCapability.available}
             unavailableReason={pdfExtractCapability.unavailableReason}
           />}
@@ -269,11 +328,19 @@ function App() {
 function PdfWorkspace({
   manager,
   jobs,
+  historyReady,
+  queuePaused,
+  historyNotice,
+  onDownload,
   capabilityAvailable,
   unavailableReason,
 }: {
   manager: JobManager;
   jobs: ProcessingJob[];
+  historyReady: boolean;
+  queuePaused: boolean;
+  historyNotice: string;
+  onDownload: (job: ProcessingJob) => void;
   capabilityAvailable: boolean;
   unavailableReason?: string;
 }) {
@@ -297,13 +364,11 @@ function PdfWorkspace({
   const activeRequestRef = useRef<string | undefined>(undefined);
 
   const activeJob = jobs.find((job) => job.id === requestId);
-  const result = activeJob?.result;
   const error = localError || activeJob?.error || "";
   const isProcessing =
     activeJob?.status === "queued" ||
     activeJob?.status === "validating" ||
     activeJob?.status === "processing";
-  const isCompleted = activeJob?.status === "completed" && Boolean(result);
 
   useEffect(
     () => () => {
@@ -411,15 +476,6 @@ function PdfWorkspace({
     }
   };
 
-  const download = () => {
-    if (!activeJob?.output || !activeJob.outputName) return;
-    const url = URL.createObjectURL(activeJob.output);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = activeJob.outputName;
-    anchor.click();
-    window.setTimeout(() => URL.revokeObjectURL(url), 1_000);
-  };
   const selectedSize = selectedFiles.reduce((total, selected) => total + selected.size, 0);
 
   return <>
@@ -474,7 +530,7 @@ function PdfWorkspace({
         {operation === "pdf.reorder-pages" && <p className="pdf-operation-note">Page content and display orientation are preserved. Include every source page exactly once.</p>}
         {unavailableReason && <p className="capability-warning" role="status">{unavailableReason}</p>}
         <div className="pdf-actions">
-          <button className="primary-button" onClick={() => void process()} disabled={!capabilityAvailable || isProcessing}>{operation === "pdf.extract-pages" ? "Extract pages" : operation === "pdf.split" ? "Split PDF" : operation === "pdf.rotate-pages" ? "Rotate pages" : operation === "pdf.reorder-pages" ? "Reorder pages" : operation === "pdf.merge" ? "Merge PDFs" : "Compress PDF"} <span>↗</span></button>
+          <button className="primary-button" onClick={() => void process()} disabled={!historyReady || !capabilityAvailable || isProcessing}>{operation === "pdf.extract-pages" ? "Extract pages" : operation === "pdf.split" ? "Split PDF" : operation === "pdf.rotate-pages" ? "Rotate pages" : operation === "pdf.reorder-pages" ? "Reorder pages" : operation === "pdf.merge" ? "Merge PDFs" : "Compress PDF"} <span>↗</span></button>
           {isProcessing && activeJob && <button className="cancel-button" onClick={() => manager.cancel(activeJob.id)}>Cancel</button>}
         </div>
         <p className="privacy-note"><span>◈</span> Processed locally in a background worker. No remote upload.</p>
@@ -488,29 +544,80 @@ function PdfWorkspace({
       </aside>
     </div>
 
-    <section className="queue-section pdf-result-section">
-      <div className="queue-heading"><div><div className="queue-overline">YOUR WORKSPACE <span>·</span> LOCAL</div><h2>PDF result</h2></div><div className="queue-summary">{isProcessing ? <><span className="pulse-dot" />Working in background</> : isCompleted ? "Ready to download" : activeJob?.status === "cancelled" ? "Cancelled" : "PDF processing"}</div></div>
-      {result ? <div className="queue-item">
-        <div className="queue-row">
-          <div className="queue-file-icon">▤</div>
-            <div className="queue-file"><strong>{result.output.name}</strong><span>{result.metadata.splitFileCount ? `${result.metadata.splitFileCount} PDFs · ` : ""}{result.metadata.pageCount} pages · {formatBytes(result.statistics.outputBytes)} output · {formatBytes(result.statistics.inputBytes)} original · {result.statistics.durationMs} ms</span></div>
-          <div className="queue-status"><span className="status-mark completed" />Ready</div>
-          <button className="download-button" onClick={download}>Download <span>↓</span></button>
-        </div>
-        {result.warnings.map((warning) => <p className="pdf-warning" key={warning}>{warning}</p>)}
-      </div> : isProcessing ? <div className="queue-empty pdf-progress"><span className="pulse-dot" /><div><strong>Processing in a background worker</strong><p>Large PDFs may take a little while. You can cancel at any time.</p></div><span className="progress-track indeterminate"><span /></span></div> : activeJob?.status === "failed" ? <div className="queue-empty"><div><strong>PDF processing failed</strong><p>{error}</p></div></div> : <div className="queue-empty"><div className="empty-stack"><span>▤</span><i>✓</i></div><div><strong>{activeJob?.status === "cancelled" ? "Processing cancelled" : "No PDF processed yet"}</strong><p>Select a PDF and choose an operation.</p></div><span className="empty-queue-label">READY WHEN YOU ARE</span></div>}
-    </section>
+    <QueuePanel
+      title="PDF processing history"
+      jobs={jobs.filter((job) => job.request.category === "pdf")}
+      manager={manager}
+      historyReady={historyReady}
+      queuePaused={queuePaused}
+      historyNotice={historyNotice}
+      onDownload={onDownload}
+    />
   </>;
 }
 
-function QueueRow({ job, onCancel, onDownload }: { job: ProcessingJob; onCancel: () => void; onDownload: () => void }) {
+function QueuePanel({
+  title,
+  jobs,
+  manager,
+  historyReady,
+  queuePaused,
+  historyNotice,
+  onDownload,
+}: {
+  title: string;
+  jobs: ProcessingJob[];
+  manager: JobManager;
+  historyReady: boolean;
+  queuePaused: boolean;
+  historyNotice: string;
+  onDownload: (job: ProcessingJob) => void;
+}) {
+  const activeCount = jobs.filter((job) => job.status === "processing" || job.status === "validating").length;
+  const completedCount = jobs.filter((job) => job.status === "completed").length;
+  const removableJobs = jobs.filter((job) => ["completed", "failed", "cancelled"].includes(job.status));
+
+  return <section className="queue-section">
+    <div className="queue-heading">
+      <div><div className="queue-overline">YOUR WORKSPACE <span>·</span> LOCAL HISTORY</div><h2>{title}</h2></div>
+      <div className="queue-toolbar">
+        <div className="queue-summary">{activeCount > 0 ? <><span className="pulse-dot" />{activeCount} in progress</> : <>{completedCount} completed</>}</div>
+        <button className="quiet-button" disabled={!historyReady} onClick={() => queuePaused ? manager.resume() : manager.pause()}>{queuePaused ? "Resume queue" : "Pause queue"}</button>
+        <button className="quiet-button" disabled={!removableJobs.length} onClick={() => removableJobs.forEach((job) => manager.remove(job.id))}>Clear history</button>
+      </div>
+    </div>
+    {historyNotice && <div className="notice history-notice" role="alert">{historyNotice}</div>}
+    {!historyReady
+      ? <div className="queue-empty"><div><strong>Restoring processing history</strong><p>Saved files remain on this device.</p></div></div>
+      : jobs.length === 0
+        ? <div className="queue-empty"><div className="empty-stack"><span>▤</span><i>✓</i></div><div><strong>Nothing in the queue — yet</strong><p>Your jobs and finished downloads will show up here.</p></div><span className="empty-queue-label">READY WHEN YOU ARE</span></div>
+        : <div className="queue-list">{jobs.map((job) => <QueueRow
+            key={job.id}
+            job={job}
+            onCancel={() => manager.cancel(job.id)}
+            onRetry={() => manager.retry(job.id)}
+            onRemove={() => manager.remove(job.id)}
+            onDownload={() => onDownload(job)}
+          />)}</div>}
+  </section>;
+}
+
+function QueueRow({
+  job,
+  onCancel,
+  onRetry,
+  onRemove,
+  onDownload,
+}: {
+  job: ProcessingJob;
+  onCancel: () => void;
+  onRetry: () => void;
+  onRemove: () => void;
+  onDownload: () => void;
+}) {
   const isComplete = job.status === "completed" && Boolean(job.output);
-  const operationName =
-    job.request.operation === "image.compress"
-      ? "compression"
-      : job.request.operation === "image.convert"
-        ? "conversion"
-        : "resize";
+  const isImage = job.request.category === "image";
+  const operationName = job.request.operation.replace("image.", "").replace("pdf.", "").replaceAll("-", " ");
   const outputLabel =
     job.request.operation === "image.compress"
       ? "Compressed"
@@ -518,21 +625,27 @@ function QueueRow({ job, onCancel, onDownload }: { job: ProcessingJob; onCancel:
         ? "Converted"
         : "Resized";
   const sourceSize = job.sourceSize ?? job.file.size;
+  const displayName = isComplete && !isImage ? job.outputName ?? job.file.name : job.file.name;
   const details = isComplete
-    ? `${job.sourceWidth} × ${job.sourceHeight} → ${job.outputWidth} × ${job.outputHeight}${job.result?.metadata.frameCount ? ` · ${job.result.metadata.frameCount} frames` : ""} · ${formatBytes(sourceSize)} → ${formatBytes(job.output!.size)}${job.output!.size < sourceSize ? ` · ${Math.round((1 - job.output!.size / sourceSize) * 100)}% smaller` : ""}`
-    : `${formatBytes(job.file.size)}${job.request.operation === "image.resize" ? ` · ${job.options && "width" in job.options ? `${job.options.width} × ${job.options.height}` : "?"}` : ""} · ${job.status === "processing" || job.status === "validating" ? `${operationName[0]?.toUpperCase()}${operationName.slice(1)} locally in background` : `Queued for ${operationName}`}`;
+    ? isImage
+      ? `${job.sourceWidth} × ${job.sourceHeight} → ${job.outputWidth} × ${job.outputHeight}${job.result?.metadata.frameCount ? ` · ${job.result.metadata.frameCount} frames` : ""} · ${formatBytes(sourceSize)} → ${formatBytes(job.output!.size)}${job.output!.size < sourceSize ? ` · ${Math.round((1 - job.output!.size / sourceSize) * 100)}% smaller` : ""}`
+      : job.request.operation === "pdf.split"
+        ? `${job.result?.metadata.splitFileCount ?? 0} PDFs · ${job.result?.metadata.pageCount ?? 0} pages · ${formatBytes(sourceSize)} → ${formatBytes(job.output!.size)}`
+      : `${job.result?.metadata.pageCount ?? 0} pages · ${formatBytes(sourceSize)} → ${formatBytes(job.output!.size)}`
+    : `${formatBytes(job.file.size)} · ${job.status === "processing" || job.status === "validating" ? `${operationName} locally in background` : `${job.status === "queued" ? "Queued for" : "Ready to retry"} ${operationName}`}`;
 
   return <div className="queue-item">
     <div className="queue-row">
-      <div className="queue-file-icon">▧</div>
-      <div className="queue-file"><strong>{job.file.name}</strong><span>{details}</span></div>
+      <div className="queue-file-icon">{isImage ? "▧" : "▤"}</div>
+      <div className="queue-file"><strong>{displayName}</strong><span>{details}</span></div>
       <div className="queue-status"><span className={`status-mark ${job.status}`} />{isComplete ? "Ready" : job.status[0].toUpperCase() + job.status.slice(1)}</div>
       {(job.status === "processing" || job.status === "validating") && <div className={`progress-track${job.progress === null ? " indeterminate" : ""}`}><span style={job.progress === null ? undefined : { width: `${job.progress}%` }} /></div>}
-      {isComplete ? <button className="download-button" onClick={onDownload}>Download <span>↓</span></button> : ["processing", "validating", "queued"].includes(job.status) ? <button className="cancel-button" onClick={onCancel}>Cancel</button> : <span className={`terminal-status ${job.status}`}>{job.status === "failed" ? "Failed" : "Cancelled"}</span>}
+      {isComplete ? <button className="download-button" onClick={onDownload}>Download <span>↓</span></button> : ["processing", "validating", "queued"].includes(job.status) ? <button className="cancel-button" onClick={onCancel}>Cancel</button> : <button className="retry-button" onClick={onRetry}>Retry</button>}
+      {["completed", "failed", "cancelled"].includes(job.status) && <button className="remove-button" onClick={onRemove} aria-label={`Remove ${job.file.name} from history`}>×</button>}
       {job.error && <div className="job-error" role="alert">{job.error}</div>}
-      {job.warnings?.map((warning) => <div className="job-warning" key={warning} role="status">{warning}</div>)}
     </div>
-    {isComplete && job.output && <ImageComparison file={job.file} output={job.output} sourceWidth={job.sourceWidth ?? 0} sourceHeight={job.sourceHeight ?? 0} outputWidth={job.outputWidth ?? 0} outputHeight={job.outputHeight ?? 0} outputLabel={outputLabel} />}
+    {job.warnings?.map((warning) => <div className={`job-warning${isImage ? "" : " pdf-warning"}`} key={warning} role="status">{warning}</div>)}
+    {isComplete && isImage && job.output && <ImageComparison file={job.file} output={job.output} sourceWidth={job.sourceWidth ?? 0} sourceHeight={job.sourceHeight ?? 0} outputWidth={job.outputWidth ?? 0} outputHeight={job.outputHeight ?? 0} outputLabel={outputLabel} />}
   </div>;
 }
 

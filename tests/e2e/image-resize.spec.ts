@@ -118,6 +118,78 @@ test("resizes an image in a worker, shows before/after previews, and downloads t
   expect(download.suggestedFilename()).toBe("two-colors-resized.webp");
 });
 
+test("restores completed image history and downloads after reloading", async ({ page }) => {
+  const fixture = await createPngFixture(page);
+  await page.locator('input[type="file"]').setInputFiles({
+    name: "history-image.png",
+    mimeType: "image/png",
+    buffer: fixture,
+  });
+  await page.getByRole("button", { name: "Resize 1 image" }).click();
+  await expect(page.getByRole("button", { name: "Download" })).toBeVisible();
+  await expect.poll(async () => page.evaluate(() => new Promise<number>((resolve, reject) => {
+    const request = indexedDB.open("gsft-processing-history", 1);
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => {
+      const transaction = request.result.transaction("jobs", "readonly");
+      const count = transaction.objectStore("jobs").count();
+      count.onsuccess = () => resolve(count.result);
+      count.onerror = () => reject(count.error);
+    };
+  }))).toBe(1);
+
+  await page.reload();
+  await expect(page.getByRole("region", { name: "Before and after comparison" })).toBeVisible();
+  await expect(page.getByText("history-image.png")).toBeVisible();
+  const downloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Download" }).click();
+  expect((await downloadPromise).suggestedFilename()).toBe("history-image-resized.webp");
+});
+
+test("marks a persisted in-flight job interrupted and retries it with its saved input", async ({ page }) => {
+  const fixture = await createPngFixture(page);
+  await page.evaluate(async (data) => {
+    const file = new File([new Uint8Array(data)], "interrupted.png", { type: "image/png" });
+    const database = await new Promise<IDBDatabase>((resolve, reject) => {
+      const request = indexedDB.open("gsft-processing-history", 1);
+      request.onerror = () => reject(request.error);
+      request.onsuccess = () => resolve(request.result);
+    });
+    await new Promise<void>((resolve, reject) => {
+      const transaction = database.transaction("jobs", "readwrite");
+      transaction.objectStore("jobs").put({
+        id: "interrupted-image",
+        file,
+        request: {
+          id: "interrupted-image",
+          category: "image",
+          operation: "image.resize",
+          input: { name: file.name, mimeType: file.type, data: file },
+          options: {
+            width: 24,
+            height: 24,
+            fit: "inside",
+            format: "webp",
+            quality: 85,
+            preventEnlargement: true,
+          },
+        },
+        status: "processing",
+        progress: 35,
+        createdAt: Date.now(),
+      });
+      transaction.oncomplete = () => resolve();
+      transaction.onerror = () => reject(transaction.error);
+    });
+  }, [...fixture]);
+
+  await page.reload();
+  await expect(page.locator(".job-error")).toContainText("Processing was interrupted");
+  await page.getByRole("button", { name: "Retry" }).click();
+  await expect(page.getByRole("button", { name: "Download" })).toBeVisible();
+  await expect(page.locator(".queue-item")).toHaveCount(2);
+});
+
 test("reports invalid image contents instead of presenting a successful result", async ({ page }) => {
   await page.locator('input[type="file"]').setInputFiles({
     name: "not-an-image.png",

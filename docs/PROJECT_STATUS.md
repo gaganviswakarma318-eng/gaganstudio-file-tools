@@ -26,6 +26,7 @@ Browser-local PDF tools and local image resizing, compression, and format conver
 - Animated GIF resize and GIF-to-GIF conversion preserve frame count, delays, loop count, transparency, and disposal behavior; animated-to-still export is rejected.
 - GIF decoding and output are bounded by 300 frames, 20 million source-canvas pixels, 50 million decoded frame-patch pixels, 100 million output frame pixels, and 250 MB of generated output.
 - Image metadata is stripped by default; opt-in preservation supports selected camera/capture EXIF fields for JPEG-to-JPEG jobs, excludes GPS, orientation, thumbnails, comments, and device identifiers, and is capped at 32 MB per JPEG.
+- Processing history is stored locally in IndexedDB, bounded to 50 jobs or 250 MB of source/output data, and supports interrupted-job recovery, retry, removal, history clearing, and queue pause/resume controls across image and PDF workspaces.
 - Dedicated module Web Worker using `createImageBitmap` and `OffscreenCanvas`; the UI thread remains available during decode, draw, and encode.
 - Queue results show source/output dimensions and byte sizes, with a savings percentage when output is smaller.
 - Completed jobs include managed before/after image previews with dimensions and file sizes.
@@ -40,7 +41,6 @@ Browser-local PDF tools and local image resizing, compression, and format conver
 ## In progress / not implemented
 
 - Production desktop packaging and native open/save dialogs; Electron Builder packaging was attempted but its network fetch was denied in this environment.
-- Persistent history and queue retry/pause controls.
 - Additional PDF operations; document, video, audio, archive, and remote processing.
 - Explicit remote-processing consent flow and remote processor.
 
@@ -62,6 +62,7 @@ Browser-local PDF tools and local image resizing, compression, and format conver
 - PDF splitting is limited to 200 output PDFs and 250 MB of generated PDF data per ZIP.
 - The browser encoder does not expose reliable percentage progress, so active jobs use an indeterminate progress indicator.
 - Electron currently uses the browser processing path and does not bundle native image tools.
+- Persistent history depends on browser IndexedDB and is subject to browser storage quotas; the app reports storage errors and retains at most 50 jobs or an estimated 250 MB.
 
 ## Validation status
 
@@ -74,4 +75,4 @@ Browser-local PDF tools and local image resizing, compression, and format conver
 
 ## Next milestone
 
-Add persistent processing history and queue recovery controls.
+Complete production desktop packaging and native open/save dialogs.

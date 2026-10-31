@@ -29,6 +29,27 @@ export class JobManager {
     return [...this.jobs.values()].sort((a, b) => a.createdAt - b.createdAt);
   }
 
+  get paused(): boolean {
+    return this.isPaused;
+  }
+
+  restore(jobs: ProcessingJob[]): void {
+    if (this.jobs.size) throw new Error("Processing history can only be restored into an empty queue.");
+    for (const job of jobs) {
+      if (this.jobs.has(job.id)) throw new Error(`Duplicate processing job ID "${job.id}" in history.`);
+      const interrupted = ["queued", "validating", "processing"].includes(job.status);
+      this.jobs.set(job.id, interrupted
+        ? {
+            ...job,
+            status: "failed",
+            progress: null,
+            error: "Processing was interrupted when the application closed. Retry to run this job again.",
+          }
+        : job);
+    }
+    this.emit();
+  }
+
   enqueue(files: File[], options: ResizeOptions): void {
     for (const file of files) {
       const request: ImageResizeRequest = {
@@ -81,15 +102,42 @@ export class JobManager {
 
   pause(): void {
     this.isPaused = true;
+    this.emit();
   }
 
   resume(): void {
     this.isPaused = false;
     this.pump();
+    this.emit();
   }
 
   cancelAll(): void {
     for (const job of this.getJobs()) this.cancel(job.id);
+  }
+
+  retry(id: string): string {
+    const job = this.jobs.get(id);
+    if (!job || !["failed", "cancelled"].includes(job.status)) {
+      throw new Error("Only failed or cancelled jobs can be retried.");
+    }
+
+    const request = {
+      ...job.request,
+      id: crypto.randomUUID(),
+      input: { ...job.request.input, data: job.file },
+    };
+    return this.enqueueRequest(request, job.file);
+  }
+
+  remove(id: string): void {
+    const job = this.jobs.get(id);
+    if (!job || !["completed", "failed", "cancelled"].includes(job.status)) return;
+    this.jobs.delete(id);
+    this.emit();
+  }
+
+  clearHistory(): void {
+    for (const job of this.getJobs()) this.remove(job.id);
   }
 
   private pump(): void {

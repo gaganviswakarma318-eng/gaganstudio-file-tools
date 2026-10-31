@@ -65,6 +65,20 @@ test("extracts selected PDF pages locally and downloads a new PDF", async ({ pag
   const chunks: Buffer[] = [];
   for await (const chunk of stream) chunks.push(Buffer.from(chunk));
   expect(Buffer.concat(chunks).subarray(0, 5).toString("ascii")).toBe("%PDF-");
+
+  await expect.poll(async () => page.evaluate(() => new Promise<number>((resolve, reject) => {
+    const request = indexedDB.open("gsft-processing-history", 1);
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => {
+      const count = request.result.transaction("jobs", "readonly").objectStore("jobs").count();
+      count.onsuccess = () => resolve(count.result);
+      count.onerror = () => reject(count.error);
+    };
+  }))).toBe(1);
+  await page.reload();
+  await page.getByRole("button", { name: "PDF tools" }).click();
+  await expect(page.getByRole("button", { name: "Download" })).toBeVisible();
+  await expect(page.locator(".queue-file strong")).toHaveText("three-pages-extracted.pdf");
 });
 
 test("reports invalid PDFs and out-of-range page selections", async ({ page }) => {

@@ -212,6 +212,10 @@ h1, h2, h3, p { margin-top: 0; }
 .queue-overline span { padding: 0 4px; color: #bbc1c2; }
 .queue-heading h2 { margin: 0; font-size: 15px; font-weight: 680; letter-spacing: -.3px; }
 .queue-summary { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 9px; }
+.queue-toolbar { display: flex; align-items: center; gap: 8px; }
+.queue-toolbar .quiet-button { padding: 6px 8px; border: 1px solid var(--line); border-radius: 4px; background: var(--surface); color: var(--muted); cursor: pointer; font-size: 9px; }
+.queue-toolbar .quiet-button:disabled { cursor: not-allowed; opacity: .55; }
+.history-notice { margin-bottom: 10px; }
 .queue-empty, .queue-row { display: flex; align-items: center; gap: 13px; min-height: 73px; padding: 12px 15px; border: 1px solid var(--line); border-radius: 5px; background: var(--surface); }
 .empty-stack { position: relative; display: grid; width: 37px; height: 37px; flex: 0 0 auto; place-items: center; border: 1px solid #e6ece9; border-radius: 5px; background: var(--surface-muted); color: #9ab9ae; font-size: 19px; }
 .empty-stack i { position: absolute; right: -4px; bottom: -3px; display: grid; width: 14px; height: 14px; place-items: center; border: 2px solid var(--surface); border-radius: 50%; background: #54a58c; color: white; font-size: 8px; font-style: normal; font-weight: 700; }
@@ -241,6 +245,7 @@ h1, h2, h3, p { margin-top: 0; }
 .download-button, .cancel-button { padding: 7px 10px; border: 1px solid #cfe0da; border-radius: 4px; background: var(--accent-soft); color: var(--accent-deep); cursor: pointer; font-size: 9px; font-weight: 650; }
 .download-button span { padding-left: 5px; font-size: 12px; }
 .cancel-button { border-color: var(--line); background: var(--surface); color: var(--muted); }
+.retry-button { padding: 7px 10px; border: 1px solid #cfe0da; border-radius: 4px; background: var(--accent-soft); color: var(--accent-deep); cursor: pointer; font-size: 9px; font-weight: 650; }
 .terminal-status { color: var(--muted); font-size: 9px; }
 .terminal-status.failed { color: #b9534b; }
 .job-error { position: absolute; right: 15px; bottom: 1px; color: #ae5348; font-size: 8px; }
