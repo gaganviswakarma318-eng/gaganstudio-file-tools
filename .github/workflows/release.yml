@@ -4,6 +4,13 @@ on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish a GitHub Release (requires running on a matching version tag)
+        required: true
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -33,8 +40,18 @@ jobs:
 
       - name: Match tag to package version
         shell: bash
+        env:
+          PUBLISH_RELEASE: ${{ inputs.publish }}
         run: |
+          if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" && "$PUBLISH_RELEASE" != "true" ]]; then
+            echo "Manual validation run: package artifacts will be built but not published."
+            exit 0
+          fi
           version="$(node -p "require('./package.json').version")"
+          if [[ "$GITHUB_REF_TYPE" != "tag" ]]; then
+            echo "Publishing requires running on a version tag." >&2
+            exit 1
+          fi
           if [[ "$GITHUB_REF_NAME" != "v$version" ]]; then
             echo "Tag $GITHUB_REF_NAME does not match package version v$version." >&2
             exit 1
@@ -163,6 +180,9 @@ jobs:
           corepack enable pnpm --install-directory node_modules/.bin
           pnpm exec electron-builder --mac dmg
 
+      - name: Create checksums
+        run: node scripts/release-assets.mjs create "${{ runner.os }}" release
+
       - name: Upload desktop packages
         uses: actions/upload-artifact@v4
         with:
@@ -172,12 +192,14 @@ jobs:
             release/*.blockmap
             release/*.AppImage
             release/*.dmg
+            release/release-manifest-*.json
           if-no-files-found: error
           retention-days: 7
 
   publish:
     name: Publish GitHub release
     needs: package
+    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish)
     runs-on: ubuntu-22.04
     permissions:
       contents: write
@@ -188,6 +210,9 @@ jobs:
           pattern: desktop-*
           path: release-assets
           merge-multiple: true
+
+      - name: Verify release asset checksums
+        run: node scripts/release-assets.mjs verify release-assets
 
       - name: Create GitHub release
         env:

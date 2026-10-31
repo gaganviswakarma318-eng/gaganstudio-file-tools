@@ -1,6 +1,8 @@
 # Desktop releases
 
-Pushing a version tag that exactly matches the root `package.json` version starts the desktop release workflow. For example, with version `0.1.0`, push `v0.1.0`. The workflow runs type checks, unit tests, and Chromium browser tests, then creates Windows NSIS, Linux AppImage, and macOS DMG packages on their respective hosted runners. It uploads the packages to a GitHub Release with generated notes. The separate CI workflow runs the same checks on pushes and pull requests.
+Run the **Desktop release** workflow manually with `publish` left false to build Windows NSIS, Linux AppImage, and macOS DMG artifacts without creating a release. Each platform artifact includes a SHA-256 manifest; the publish job verifies every package against its manifest before attaching any files to a release. This is the safe way to validate platform packaging after pushing workflow changes.
+
+To publish, ensure the root `package.json` version is final, create a matching version tag, and push it. For example, with version `0.1.0`, push `v0.1.0`. The workflow runs type checks, unit tests, and Chromium browser tests, creates all three platform packages on their respective hosted runners, then uploads them to a GitHub Release with generated notes. Manual publishing is allowed only when explicitly selected on that matching version tag. The separate CI workflow runs checks on pushes and pull requests.
 
 ## Optional signing and notarization
 
