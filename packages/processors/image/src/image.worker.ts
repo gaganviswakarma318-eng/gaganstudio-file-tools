@@ -1,14 +1,16 @@
 import { detectImageFile, validateImageDimensions, validateImageFile } from "@gsft/core";
-import type { ResizeOptions } from "@gsft/shared";
+import type { ImageResizeRequest, ProcessingResult } from "@gsft/shared";
 
 const MIME_TYPES = { jpeg: "image/jpeg", png: "image/png", webp: "image/webp" } as const;
 
-self.onmessage = async (event: MessageEvent<{ file: File; options: ResizeOptions }>) => {
-  const { file, options } = event.data;
+self.onmessage = async (event: MessageEvent<ImageResizeRequest>) => {
+  const request = event.data;
+  const { input, options } = request;
   let source: ImageBitmap | undefined;
+  const startedAt = performance.now();
   try {
-    await validateImageFile(file);
-    const detected = await detectImageFile(file);
+    await validateImageFile(input.data);
+    const detected = await detectImageFile(input.data);
     if (detected?.format === "gif") {
       throw new Error("GIF resizing is unavailable because exporting would remove animation.");
     }
@@ -17,7 +19,7 @@ self.onmessage = async (event: MessageEvent<{ file: File; options: ResizeOptions
       throw new Error("Quality must be between 1 and 100.");
     }
 
-    source = await createImageBitmap(file);
+    source = await createImageBitmap(input.data);
     validateImageDimensions(source.width, source.height);
     let width = options.width;
     let height = options.height;
@@ -65,9 +67,34 @@ self.onmessage = async (event: MessageEvent<{ file: File; options: ResizeOptions
     if (output.type !== MIME_TYPES[options.format]) {
       throw new Error(`${options.format.toUpperCase()} export is not supported by this browser.`);
     }
-    self.postMessage({ output, width, height, sourceWidth: source.width, sourceHeight: source.height });
+    const result: ProcessingResult = {
+      requestId: request.id,
+      location: "browser",
+      output: {
+        data: output,
+        name: `${input.name.replace(/\.[^.]+$/, "") || "image"}-resized.${options.format === "jpeg" ? "jpg" : options.format}`,
+        mimeType: MIME_TYPES[options.format],
+      },
+      metadata: {
+        sourceWidth: source.width,
+        sourceHeight: source.height,
+        width,
+        height,
+        format: options.format,
+      },
+      statistics: {
+        inputBytes: input.data.size,
+        outputBytes: output.size,
+        durationMs: Math.max(0, Math.round(performance.now() - startedAt)),
+      },
+      warnings: [],
+    };
+    self.postMessage(result);
   } catch (error) {
-    self.postMessage({ error: error instanceof Error ? error.message : "Image processing failed." });
+    self.postMessage({
+      requestId: request.id,
+      error: error instanceof Error ? error.message : "Image processing failed.",
+    });
   } finally {
     source?.close();
   }

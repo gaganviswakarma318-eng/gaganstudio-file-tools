@@ -89,6 +89,8 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 3px s
 .topbar-actions { display: flex; align-items: center; gap: 18px; }
 .local-badge { display: flex; align-items: center; gap: 7px; color: var(--accent-deep); font-size: 10px; font-weight: 650; }
 .local-badge span, .pulse-dot { width: 6px; height: 6px; border-radius: 50%; background: #36a17f; box-shadow: 0 0 0 3px rgb(54 161 127 / 12%); }
+.local-badge.unavailable { color: #a45b43; }
+.local-badge.unavailable span { background: #bb684d; box-shadow: 0 0 0 3px rgb(187 104 77 / 12%); }
 .theme-control { display: flex; align-items: center; gap: 5px; color: var(--muted); }
 .theme-icon { font-size: 15px; }
 .theme-control select { width: 68px; padding: 5px 0; border: 0; background: transparent; color: var(--muted); outline: none; font-size: 10px; }
@@ -164,6 +166,8 @@ h1, h2, h3, p { margin-top: 0; }
 .help-dot { display: grid; width: 13px; height: 13px; place-items: center; border: 1px solid #cdd5d5; border-radius: 50%; color: #909b9e; font-size: 8px; cursor: help; }
 .primary-button { display: flex; width: 100%; height: 37px; align-items: center; justify-content: space-between; padding: 0 12px; border: 0; border-radius: 4px; background: #287c68; color: white; cursor: pointer; font-size: 10px; font-weight: 650; transition: background .16s, transform .16s; }
 .primary-button:hover { transform: translateY(-1px); background: #1f6b59; }
+.primary-button:disabled { transform: none; background: #9aa8a3; cursor: not-allowed; }
+.capability-warning { margin: 0 0 10px; color: #a45b43; font-size: 10px; line-height: 1.5; }
 .privacy-note { display: flex; align-items: center; justify-content: center; gap: 6px; margin: 10px 0 0; color: #87918f; font-size: 8px; }
 .privacy-note span { color: var(--accent); font-size: 12px; }
 .tools-panel { display: flex; flex-direction: column; }
@@ -196,8 +200,15 @@ h1, h2, h3, p { margin-top: 0; }
 .queue-empty > div:nth-child(2) strong { font-size: 10px; font-weight: 650; }
 .queue-empty > div:nth-child(2) p { margin: 4px 0 0; color: var(--muted); font-size: 9px; }
 .empty-queue-label { color: #a1a9aa; font-size: 8px; font-weight: 620; letter-spacing: .9px; }
-.queue-list { display: grid; gap: 6px; }
-.queue-row { position: relative; min-height: 63px; }
+.queue-list { display: grid; gap: 10px; }
+.queue-item { overflow: hidden; border: 1px solid var(--line); border-radius: 5px; background: var(--surface); }
+.queue-row { position: relative; min-height: 63px; border: 0; border-radius: 0; box-shadow: none; }
+.image-comparison { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; padding: 12px 15px 15px; border-top: 1px solid var(--line); background: var(--surface-muted); }
+.preview-card { min-width: 0; margin: 0; }
+.preview-card figcaption { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 7px; color: var(--muted); font-size: 8px; }
+.preview-card figcaption span:first-child { color: var(--accent-deep); font-size: 8px; font-weight: 720; letter-spacing: 1px; }
+.preview-image { display: grid; min-height: 100px; height: 145px; place-items: center; overflow: hidden; border: 1px solid var(--line); border-radius: 4px; background-color: var(--surface); background-image: linear-gradient(45deg, color-mix(in srgb, var(--muted) 9%, transparent) 25%, transparent 25%), linear-gradient(-45deg, color-mix(in srgb, var(--muted) 9%, transparent) 25%, transparent 25%), linear-gradient(45deg, transparent 75%, color-mix(in srgb, var(--muted) 9%, transparent) 75%), linear-gradient(-45deg, transparent 75%, color-mix(in srgb, var(--muted) 9%, transparent) 75%); background-position: 0 0, 0 6px, 6px -6px, -6px 0; background-size: 12px 12px; }
+.preview-image img { display: block; max-width: 100%; max-height: 100%; object-fit: contain; }
 .queue-file-icon { width: 31px; height: 34px; flex: 0 0 auto; font-size: 13px; }
 .queue-status { display: flex; width: 84px; flex: 0 0 auto; align-items: center; gap: 6px; color: var(--muted); font-size: 9px; }
 .status-mark { width: 6px; height: 6px; border-radius: 50%; background: #b2b9ba; }
@@ -274,6 +285,9 @@ h1, h2, h3, p { margin-top: 0; }
   .queue-status { width: 65px; font-size: 8px; }
   .progress-track { width: 35px; }
   .queue-row { gap: 8px; padding: 10px 8px; }
+  .image-comparison { gap: 7px; padding: 10px 8px; }
+  .preview-image { height: 105px; }
+  .preview-card figcaption { align-items: flex-start; flex-direction: column; gap: 3px; }
   .download-button, .cancel-button { padding: 6px; font-size: 8px; }
   .app-footer { gap: 10px; font-size: 6px; letter-spacing: .5px; }
 }

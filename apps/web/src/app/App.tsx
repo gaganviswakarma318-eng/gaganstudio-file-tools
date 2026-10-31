@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { JobManager } from "@gsft/core";
+import { JobManager, ProcessingRouter } from "@gsft/core";
 import type { ImageFormat, ProcessingJob, ResizeFit, ResizeOptions } from "@gsft/shared";
-import { resizeImage } from "@gsft/image-processor";
+import { createBrowserImageProcessor } from "@gsft/image-processor";
 
 const navItems = [
   { name: "Home", icon: "⌂", active: false },
@@ -44,14 +44,12 @@ function App() {
     () => ({ width, height, fit, format, quality, preventEnlargement }),
     [width, height, fit, format, quality, preventEnlargement],
   );
-  const optionsRef = useRef(options);
-  optionsRef.current = options;
+  const imageProcessor = useMemo(() => createBrowserImageProcessor(), []);
+  const router = useMemo(() => new ProcessingRouter([imageProcessor]), [imageProcessor]);
+  const imageResizeCapability = imageProcessor.capability;
   const manager = useMemo(
-    () =>
-      new JobManager((file, signal, progress, jobOptions) =>
-        resizeImage(file, jobOptions ?? optionsRef.current, signal, progress),
-      ),
-    [],
+    () => new JobManager(router),
+    [router],
   );
 
   useEffect(() => manager.subscribe(setJobs), [manager]);
@@ -122,7 +120,9 @@ function App() {
         <header className="topbar">
           <div className="breadcrumb">Workspace <span>/</span> <strong>Image tools</strong></div>
           <div className="topbar-actions">
-            <span className="local-badge"><span /> Local processing</span>
+            <span className={`local-badge${imageResizeCapability.available ? "" : " unavailable"}`} title={imageResizeCapability.unavailableReason}>
+              <span />{imageResizeCapability.available ? "Local processing" : "Image processing unavailable"}
+            </span>
             <label className="theme-control" title="Color theme">
               <span className="theme-icon">{theme === "dark" ? "☾" : theme === "light" ? "☼" : "◐"}</span>
               <select aria-label="Color theme" value={theme} onChange={(event) => setTheme(event.target.value as typeof theme)}>
@@ -171,7 +171,8 @@ function App() {
               {format !== "png" && <div className="quality-control"><div><span className="field-label">QUALITY</span><strong>{quality}%</strong></div><input aria-label="Output quality" type="range" min="10" max="100" value={quality} onChange={(event) => setQuality(Number(event.target.value))} /></div>}
               {format === "jpeg" && <p className="format-note">Transparent areas are filled with white in JPEG output.</p>}
               <label className="check-option"><input type="checkbox" checked={preventEnlargement} onChange={(event) => setPreventEnlargement(event.target.checked)} /><span>Prevent enlargement</span><span className="help-dot" title="Images smaller than the selected dimensions keep their original size.">?</span></label>
-              <button className="primary-button" onClick={startProcessing}><span>Resize {files.length ? `${files.length} ${files.length === 1 ? "image" : "images"}` : "images"}</span><span>↗</span></button>
+              {!imageResizeCapability.available && <p className="capability-warning" role="status">{imageResizeCapability.unavailableReason}</p>}
+              <button className="primary-button" onClick={startProcessing} disabled={!imageResizeCapability.available}><span>Resize {files.length ? `${files.length} ${files.length === 1 ? "image" : "images"}` : "images"}</span><span>↗</span></button>
               <p className="privacy-note"><span>◈</span> Images are processed locally. Export removes image metadata.</p>
             </section>
 
@@ -195,14 +196,56 @@ function App() {
 }
 
 function QueueRow({ job, onCancel, onDownload }: { job: ProcessingJob; onCancel: () => void; onDownload: () => void }) {
-  return <div className="queue-row">
-    <div className="queue-file-icon">▧</div>
-    <div className="queue-file"><strong>{job.file.name}</strong><span>{job.status === "completed" && job.output ? `${job.sourceWidth} × ${job.sourceHeight} → ${job.outputWidth} × ${job.outputHeight} · ${formatBytes(job.sourceSize ?? job.file.size)} → ${formatBytes(job.output.size)}${job.output.size < (job.sourceSize ?? job.file.size) ? ` · ${Math.round((1 - job.output.size / (job.sourceSize ?? job.file.size)) * 100)}% smaller` : ""}` : `${formatBytes(job.file.size)} · ${job.options?.width ?? "?"} × ${job.options?.height ?? "?"} · ${job.status === "processing" || job.status === "validating" ? "Resizing locally in background" : "Queued for resize"}`}</span></div>
-    <div className="queue-status"><span className={`status-mark ${job.status}`} />{job.status === "completed" ? "Ready" : job.status[0].toUpperCase() + job.status.slice(1)}</div>
-    {(job.status === "processing" || job.status === "validating") && <div className={`progress-track${job.progress === null ? " indeterminate" : ""}`}><span style={job.progress === null ? undefined : { width: `${job.progress}%` }} /></div>}
-    {job.status === "completed" ? <button className="download-button" onClick={onDownload}>Download <span>↓</span></button> : ["processing", "validating", "queued"].includes(job.status) ? <button className="cancel-button" onClick={onCancel}>Cancel</button> : <span className={`terminal-status ${job.status}`}>{job.status === "failed" ? "Failed" : "Cancelled"}</span>}
-    {job.error && <div className="job-error" role="alert">{job.error}</div>}
+  const isComplete = job.status === "completed" && Boolean(job.output);
+  const sourceSize = job.sourceSize ?? job.file.size;
+  const details = isComplete
+    ? `${job.sourceWidth} × ${job.sourceHeight} → ${job.outputWidth} × ${job.outputHeight} · ${formatBytes(sourceSize)} → ${formatBytes(job.output!.size)}${job.output!.size < sourceSize ? ` · ${Math.round((1 - job.output!.size / sourceSize) * 100)}% smaller` : ""}`
+    : `${formatBytes(job.file.size)} · ${job.options?.width ?? "?"} × ${job.options?.height ?? "?"} · ${job.status === "processing" || job.status === "validating" ? "Resizing locally in background" : "Queued for resize"}`;
+
+  return <div className="queue-item">
+    <div className="queue-row">
+      <div className="queue-file-icon">▧</div>
+      <div className="queue-file"><strong>{job.file.name}</strong><span>{details}</span></div>
+      <div className="queue-status"><span className={`status-mark ${job.status}`} />{isComplete ? "Ready" : job.status[0].toUpperCase() + job.status.slice(1)}</div>
+      {(job.status === "processing" || job.status === "validating") && <div className={`progress-track${job.progress === null ? " indeterminate" : ""}`}><span style={job.progress === null ? undefined : { width: `${job.progress}%` }} /></div>}
+      {isComplete ? <button className="download-button" onClick={onDownload}>Download <span>↓</span></button> : ["processing", "validating", "queued"].includes(job.status) ? <button className="cancel-button" onClick={onCancel}>Cancel</button> : <span className={`terminal-status ${job.status}`}>{job.status === "failed" ? "Failed" : "Cancelled"}</span>}
+      {job.error && <div className="job-error" role="alert">{job.error}</div>}
+    </div>
+    {isComplete && job.output && <ImageComparison file={job.file} output={job.output} sourceWidth={job.sourceWidth ?? 0} sourceHeight={job.sourceHeight ?? 0} outputWidth={job.outputWidth ?? 0} outputHeight={job.outputHeight ?? 0} />}
   </div>;
+}
+
+function ImageComparison({ file, output, sourceWidth, sourceHeight, outputWidth, outputHeight }: {
+  file: File;
+  output: Blob;
+  sourceWidth: number;
+  sourceHeight: number;
+  outputWidth: number;
+  outputHeight: number;
+}) {
+  const [previewUrls, setPreviewUrls] = useState<{ original: string; resized: string }>();
+
+  useEffect(() => {
+    const urls = { original: URL.createObjectURL(file), resized: URL.createObjectURL(output) };
+    setPreviewUrls(urls);
+    return () => {
+      URL.revokeObjectURL(urls.original);
+      URL.revokeObjectURL(urls.resized);
+    };
+  }, [file, output]);
+
+  if (!previewUrls) return null;
+
+  return <section className="image-comparison" aria-label="Before and after comparison">
+    <figure className="preview-card">
+      <figcaption><span>BEFORE</span><span>{sourceWidth} × {sourceHeight} · {formatBytes(file.size)}</span></figcaption>
+      <div className="preview-image"><img src={previewUrls.original} alt="Original image preview" /></div>
+    </figure>
+    <figure className="preview-card">
+      <figcaption><span>AFTER</span><span>{outputWidth} × {outputHeight} · {formatBytes(output.size)}</span></figcaption>
+      <div className="preview-image"><img src={previewUrls.resized} alt="Resized image preview" /></div>
+    </figure>
+  </section>;
 }
 
 export default App;

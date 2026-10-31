@@ -6,19 +6,21 @@ GSFT is a pnpm monorepo with a shared React web renderer and an Electron shell. 
 
 - `apps/web` owns the React interface and Vite browser build.
 - `apps/desktop/electron` owns the Electron main process and isolated preload. Renderer Node integration is disabled.
-- `packages/shared` contains cross-package job and image option types.
-- `packages/core` contains image signature detection, input checks, and the cancellable bounded job queue.
-- `packages/processors/image` contains the browser image pipeline. The processor starts a module Web Worker; the worker decodes with `createImageBitmap`, draws with `OffscreenCanvas`, and encodes to PNG, JPEG, or WebP.
+- `packages/shared` contains cross-package job, processing request/result/context, capability, and image option types.
+- `packages/core` contains image signature detection, input checks, the cancellable bounded job queue, browser API capability probes, and the processing router.
+- `packages/processors/image` contains the browser image processor adapter. It implements the shared processor contract and starts a module Web Worker; the worker decodes with `createImageBitmap`, draws with `OffscreenCanvas`, and encodes to PNG, JPEG, or WebP.
 
 ## Current processing flow
 
-The UI adds selected files to `JobManager`. The manager limits concurrency, tracks job state, and supplies an `AbortSignal`. The image processor passes the file and validated options to a dedicated worker. Cancellation terminates that worker. The worker checks the signature and size, decodes, applies the requested fit mode, encodes a Blob, and returns the actual dimensions. The renderer exposes a download only after successful completion.
+The UI adds selected files and an immutable options snapshot to `JobManager`. The manager limits concurrency, creates a typed `image.resize` request, and supplies an `AbortSignal` through the processing context. `ProcessingRouter` selects a processor by category, operation, requested location, and detected capability. The browser image processor passes the request to a dedicated worker. Cancellation terminates that worker. The worker checks the signature and size, decodes, applies the requested fit mode, encodes a Blob, and returns a structured result with actual dimensions, file sizes, duration, location, and warnings. The router checks request identity and output integrity before the renderer exposes a download.
+
+Capability detection checks for Web Workers, `createImageBitmap`, `OffscreenCanvas`, and `OffscreenCanvas.convertToBlob`. Unsupported browser environments expose an unavailable capability and a reason; the UI disables image processing rather than silently falling back to main-thread work.
 
 The Canvas-based pipeline strips metadata. JPEG uses a white background; PNG and WebP retain alpha. Animated GIF is rejected to avoid dropping frames. Browser support for decoding AVIF and TIFF varies. The image worker reports no fabricated percentage because browser encoding does not provide reliable progress.
 
 ## Desktop security boundary
 
-Electron enables context isolation and sandboxing and disables Node integration. The renderer currently uses the same browser worker pipeline as the web app; no native processor or file-system bridge is exposed yet. Native processing, native dialogs, remote processing, and a capability-based location router remain future work.
+Electron enables context isolation and sandboxing and disables Node integration. The renderer currently uses the same browser worker pipeline as the web app; no native processor or file-system bridge is exposed yet. Native processing, native dialogs, and remote processing remain future work. The router and location/capability types provide a contract for adding these backends without exposing native commands to the renderer.
 
 ## Planned expansion
 

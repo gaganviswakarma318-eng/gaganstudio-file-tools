@@ -1,50 +1,76 @@
-import type { ResizeOptions } from "@gsft/shared";
+import { detectProcessingCapabilities } from "@gsft/core";
+import type {
+  FileProcessor,
+  ImageResizeRequest,
+  ProcessingContext,
+  ProcessingResult,
+} from "@gsft/shared";
 
-interface WorkerSuccess {
-  output: Blob;
-  width: number;
-  height: number;
-  sourceWidth: number;
-  sourceHeight: number;
-}
+type WorkerResponse = ProcessingResult | { requestId: string; error: string };
 
-export async function resizeImage(
-  file: File,
-  options: ResizeOptions,
-  signal: AbortSignal,
-  _onProgress: (progress: number) => void,
-): Promise<WorkerSuccess & { outputName: string }> {
-  if (typeof Worker === "undefined") {
-    throw new Error("This browser does not support background image processing.");
+export function createBrowserImageProcessor(): FileProcessor<ImageResizeRequest> {
+  const capability = detectProcessingCapabilities()[0];
+  if (!capability) {
+    throw new Error("Browser image resize capability detection returned no result.");
   }
 
-  const worker = new Worker(new URL("./image.worker.ts", import.meta.url), { type: "module" });
-  return new Promise((resolve, reject) => {
-    const cleanup = () => {
-      signal.removeEventListener("abort", onAbort);
-      worker.terminate();
-    };
-    const onAbort = () => {
-      cleanup();
-      reject(new DOMException("Cancelled", "AbortError"));
-    };
+  return {
+    capability,
+    process(request: ImageResizeRequest, context: ProcessingContext) {
+      return new Promise<ProcessingResult>((resolve, reject) => {
+        if (context.signal.aborted) {
+          reject(new DOMException("Cancelled", "AbortError"));
+          return;
+        }
 
-    if (signal.aborted) return onAbort();
-    signal.addEventListener("abort", onAbort, { once: true });
-    worker.onmessage = (event: MessageEvent<WorkerSuccess | { error: string }>) => {
-      cleanup();
-      if ("error" in event.data) {
-        reject(new Error(event.data.error));
-        return;
-      }
-      const baseName = file.name.replace(/\.[^.]+$/, "") || "image";
-      const extension = options.format === "jpeg" ? "jpg" : options.format;
-      resolve({ ...event.data, outputName: `${baseName}-resized.${extension}` });
-    };
-    worker.onerror = (event) => {
-      cleanup();
-      reject(new Error(event.message || "Background image processing failed."));
-    };
-    worker.postMessage({ file, options });
-  });
+        const worker = new Worker(new URL("./image.worker.ts", import.meta.url), {
+          type: "module",
+        });
+        let settled = false;
+        const cleanup = () => {
+          context.signal.removeEventListener("abort", onAbort);
+          worker.terminate();
+        };
+        const finish = (callback: () => void) => {
+          if (settled) return;
+          settled = true;
+          cleanup();
+          callback();
+        };
+        const onAbort = () =>
+          finish(() => reject(new DOMException("Cancelled", "AbortError")));
+
+        context.signal.addEventListener("abort", onAbort, { once: true });
+        worker.onmessage = (event: MessageEvent<WorkerResponse>) => {
+          const response = event.data;
+          if (response.requestId !== request.id) {
+            finish(() => reject(new Error("The image worker returned a mismatched request ID.")));
+            return;
+          }
+          if ("error" in response) {
+            finish(() => reject(new Error(response.error)));
+            return;
+          }
+          finish(() => resolve(response));
+        };
+        worker.onerror = (event) => {
+          finish(() =>
+            reject(new Error(event.message || "Background image processing failed.")),
+          );
+        };
+
+        try {
+          worker.postMessage(request);
+        } catch (error) {
+          finish(() =>
+            reject(
+              error instanceof Error
+                ? error
+                : new Error("The image request could not be sent to the worker."),
+            ),
+          );
+        }
+      });
+    },
+  };
 }

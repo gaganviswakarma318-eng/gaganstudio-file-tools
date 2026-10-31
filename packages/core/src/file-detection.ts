@@ -15,7 +15,7 @@ export interface DetectedFile {
 const signatureMatches = (bytes: Uint8Array, offset: number, expected: number[]) =>
   expected.every((value, index) => bytes[offset + index] === value);
 
-export async function detectImageFile(file: File): Promise<DetectedFile | null> {
+export async function detectImageFile(file: Blob): Promise<DetectedFile | null> {
   const bytes = new Uint8Array(await file.slice(0, 16).arrayBuffer());
 
   if (signatureMatches(bytes, 0, [0xff, 0xd8, 0xff])) {

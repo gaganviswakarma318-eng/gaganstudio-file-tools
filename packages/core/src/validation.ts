@@ -3,7 +3,7 @@ import { detectImageFile } from "./file-detection";
 export const MAX_IMAGE_FILE_BYTES = 250 * 1024 * 1024;
 export const MAX_IMAGE_PIXELS = 80_000_000;
 
-export async function validateImageFile(file: File): Promise<void> {
+export async function validateImageFile(file: Blob): Promise<void> {
   if (file.size === 0) {
     throw new Error("This file is empty.");
   }

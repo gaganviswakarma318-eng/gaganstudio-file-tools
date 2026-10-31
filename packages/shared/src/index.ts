@@ -19,6 +19,84 @@ export interface ResizeOptions {
   preventEnlargement: boolean;
 }
 
+export type FileCategory = "image" | "pdf" | "document" | "video" | "audio" | "archive";
+export type ProcessingLocation = "browser" | "desktop" | "remote";
+export type ProcessingOperation = "image.resize";
+export type ProcessingStage = "validating" | "decoding" | "processing" | "encoding";
+
+export interface ProcessingInput {
+  name: string;
+  mimeType: string;
+  data: Blob;
+}
+
+export interface ImageResizeRequest {
+  id: string;
+  category: "image";
+  operation: "image.resize";
+  input: ProcessingInput;
+  options: ResizeOptions;
+  requestedLocation?: ProcessingLocation;
+}
+
+export type ProcessingRequest = ImageResizeRequest;
+
+export interface ProcessingProgress {
+  stage: ProcessingStage;
+  percentage: number | null;
+}
+
+export interface ProcessingContext {
+  signal: AbortSignal;
+  reportProgress: (progress: ProcessingProgress) => void;
+}
+
+export interface ProcessingOutput {
+  data: Blob;
+  name: string;
+  mimeType: string;
+}
+
+export interface ProcessingMetadata {
+  sourceWidth?: number;
+  sourceHeight?: number;
+  width?: number;
+  height?: number;
+  format?: string;
+}
+
+export interface ProcessingStatistics {
+  inputBytes: number;
+  outputBytes: number;
+  durationMs: number;
+}
+
+export interface ProcessingResult {
+  requestId: string;
+  location: ProcessingLocation;
+  output: ProcessingOutput;
+  metadata: ProcessingMetadata;
+  statistics: ProcessingStatistics;
+  warnings: string[];
+}
+
+export interface ProcessorCapability {
+  id: string;
+  category: FileCategory;
+  operations: ProcessingOperation[];
+  location: ProcessingLocation;
+  inputFormats: string[];
+  outputFormats: string[];
+  requirements: string[];
+  available: boolean;
+  unavailableReason?: string;
+}
+
+export interface FileProcessor<Request extends ProcessingRequest = ProcessingRequest> {
+  readonly capability: ProcessorCapability;
+  process(request: Request, context: ProcessingContext): Promise<ProcessingResult>;
+}
+
 export interface ProcessingJob {
   id: string;
   file: File;
@@ -33,5 +111,7 @@ export interface ProcessingJob {
   sourceWidth?: number;
   sourceHeight?: number;
   sourceSize?: number;
+  location?: ProcessingLocation;
+  warnings?: string[];
   error?: string;
 }

@@ -1,11 +1,5 @@
 import type { ProcessingJob, ResizeOptions } from "@gsft/shared";
-
-export type JobProcessor = (
-  file: File,
-  signal: AbortSignal,
-  onProgress: (progress: number) => void,
-  options?: ResizeOptions,
-) => Promise<{ output: Blob; width: number; height: number; outputName: string; sourceWidth?: number; sourceHeight?: number }>;
+import { ProcessingRouter } from "./processing-router";
 
 export class JobManager {
   private readonly jobs = new Map<string, ProcessingJob>();
@@ -16,7 +10,7 @@ export class JobManager {
   private isPaused = false;
 
   constructor(
-    private readonly processor: JobProcessor,
+    private readonly router: ProcessingRouter,
     private readonly concurrency = 2,
   ) {}
 
@@ -30,7 +24,7 @@ export class JobManager {
     return [...this.jobs.values()].sort((a, b) => a.createdAt - b.createdAt);
   }
 
-  enqueue(files: File[], options?: ResizeOptions): void {
+  enqueue(files: File[], options: ResizeOptions): void {
     for (const file of files) {
       const id = crypto.randomUUID();
       this.jobs.set(id, {
@@ -95,24 +89,51 @@ export class JobManager {
       if (controller.signal.aborted) throw new DOMException("Cancelled", "AbortError");
       this.jobs.set(job.id, { ...this.jobs.get(job.id)!, status: "processing" });
       this.emit();
-      const result = await this.processor(job.file, controller.signal, (progress) => {
-        const current = this.jobs.get(job.id);
-        if (current?.status === "processing") {
-          this.jobs.set(job.id, { ...current, progress: Math.max(0, Math.min(100, progress)) });
-          this.emit();
-        }
-      }, job.options);
+      const options = job.options;
+      if (!options) {
+        throw new Error("Resize options are required to process an image.");
+      }
+
+      const result = await this.router.process(
+        {
+          id: job.id,
+          category: "image",
+          operation: "image.resize",
+          input: {
+            name: job.file.name,
+            mimeType: job.file.type,
+            data: job.file,
+          },
+          options,
+        },
+        {
+          signal: controller.signal,
+          reportProgress: ({ percentage }) => {
+            const current = this.jobs.get(job.id);
+            if (current?.status === "processing") {
+              this.jobs.set(job.id, {
+                ...current,
+                progress:
+                  percentage === null ? null : Math.max(0, Math.min(100, percentage)),
+              });
+              this.emit();
+            }
+          },
+        },
+      );
       const current = this.jobs.get(job.id);
       if (current) {
         this.jobs.set(job.id, {
           ...current,
-          output: result.output,
-          outputName: result.outputName,
-          outputWidth: result.width,
-          outputHeight: result.height,
-          sourceWidth: result.sourceWidth,
-          sourceHeight: result.sourceHeight,
-          sourceSize: job.file.size,
+          output: result.output.data,
+          outputName: result.output.name,
+          outputWidth: result.metadata.width,
+          outputHeight: result.metadata.height,
+          sourceWidth: result.metadata.sourceWidth,
+          sourceHeight: result.metadata.sourceHeight,
+          sourceSize: result.statistics.inputBytes,
+          location: result.location,
+          warnings: result.warnings,
           status: "completed",
           progress: 100,
         });
