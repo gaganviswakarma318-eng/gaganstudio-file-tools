@@ -26,6 +26,8 @@ Build a platform installer with `corepack pnpm build:desktop` (Windows NSIS, Lin
 
 Build the web app with `corepack pnpm build:web`, run unit tests with `corepack pnpm test`, browser tests with `corepack pnpm test:e2e`, and check TypeScript with `corepack pnpm typecheck`.
 
+Pushing a `v<version>` tag matching the root `package.json` version creates Windows, Linux, and macOS packages and publishes a GitHub Release. Signing and Apple notarization can be enabled with repository Actions secrets; without them, packages are unsigned. See [docs/RELEASING.md](docs/RELEASING.md) for the workflow and required secrets.
+
 ## Current capabilities
 
 - Select or drop multiple image files; file type is checked from its contents.

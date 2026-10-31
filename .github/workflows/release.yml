@@ -1,0 +1,195 @@
+name: Desktop release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: Verify release
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 12.16.1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Match tag to package version
+        shell: bash
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          if [[ "$GITHUB_REF_NAME" != "v$version" ]]; then
+            echo "Tag $GITHUB_REF_NAME does not match package version v$version." >&2
+            exit 1
+          fi
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Type-check
+        run: pnpm typecheck
+
+      - name: Run unit tests
+        run: pnpm test
+
+      - name: Install Chromium
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Run browser tests
+        run: pnpm test:e2e --workers=1
+
+  package:
+    name: Package on ${{ matrix.os }}
+    needs: verify
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - windows-latest
+          - ubuntu-22.04
+          - macos-latest
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 12.16.1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build web app
+        run: pnpm build:web
+
+      - name: Check Windows signing configuration
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          CERTIFICATE_BASE64: ${{ secrets.WINDOWS_CERTIFICATE_BASE64 }}
+          CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:CERTIFICATE_BASE64) -ne [string]::IsNullOrWhiteSpace($env:CERTIFICATE_PASSWORD)) {
+            throw "Configure both WINDOWS_CERTIFICATE_BASE64 and WINDOWS_CERTIFICATE_PASSWORD, or neither."
+          }
+          if (-not [string]::IsNullOrWhiteSpace($env:CERTIFICATE_BASE64)) {
+            $certificatePath = Join-Path $env:RUNNER_TEMP "gsft-windows-signing.pfx"
+            [IO.File]::WriteAllBytes($certificatePath, [Convert]::FromBase64String($env:CERTIFICATE_BASE64))
+            "CSC_LINK=$certificatePath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+            "CSC_KEY_PASSWORD=$env:CERTIFICATE_PASSWORD" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          }
+
+      - name: Check macOS signing configuration
+        if: runner.os == 'macOS'
+        shell: bash
+        env:
+          CERTIFICATE_BASE64: ${{ secrets.MAC_CERTIFICATE_BASE64 }}
+          CERTIFICATE_PASSWORD: ${{ secrets.MAC_CERTIFICATE_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          certificate_configured=false
+          notarization_configured=false
+          if [[ -n "$CERTIFICATE_BASE64" || -n "$CERTIFICATE_PASSWORD" ]]; then
+            if [[ -z "$CERTIFICATE_BASE64" || -z "$CERTIFICATE_PASSWORD" ]]; then
+              echo "Configure both MAC_CERTIFICATE_BASE64 and MAC_CERTIFICATE_PASSWORD, or neither." >&2
+              exit 1
+            fi
+            certificate_configured=true
+          fi
+          if [[ -n "$APPLE_ID" || -n "$APPLE_APP_SPECIFIC_PASSWORD" || -n "$APPLE_TEAM_ID" ]]; then
+            if [[ -z "$APPLE_ID" || -z "$APPLE_APP_SPECIFIC_PASSWORD" || -z "$APPLE_TEAM_ID" ]]; then
+              echo "Configure APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD, and APPLE_TEAM_ID together, or none." >&2
+              exit 1
+            fi
+            notarization_configured=true
+          fi
+          if [[ "$notarization_configured" == true && "$certificate_configured" != true ]]; then
+            echo "Apple notarization requires a configured MAC signing certificate." >&2
+            exit 1
+          fi
+          if [[ "$certificate_configured" == true ]]; then
+            certificate_path="$RUNNER_TEMP/gsft-macos-signing.p12"
+            printf '%s' "$CERTIFICATE_BASE64" | base64 -D > "$certificate_path"
+            echo "CSC_LINK=$certificate_path" >> "$GITHUB_ENV"
+            echo "CSC_KEY_PASSWORD=$CERTIFICATE_PASSWORD" >> "$GITHUB_ENV"
+          fi
+
+      - name: Build Windows installer
+        if: runner.os == 'Windows'
+        run: |
+          corepack enable pnpm --install-directory node_modules/.bin
+          pnpm exec electron-builder --win nsis
+
+      - name: Build Linux package
+        if: runner.os == 'Linux'
+        run: |
+          corepack enable pnpm --install-directory node_modules/.bin
+          pnpm exec electron-builder --linux AppImage
+
+      - name: Build macOS package
+        if: runner.os == 'macOS'
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          corepack enable pnpm --install-directory node_modules/.bin
+          pnpm exec electron-builder --mac dmg
+
+      - name: Upload desktop packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-${{ runner.os }}
+          path: |
+            release/*.exe
+            release/*.blockmap
+            release/*.AppImage
+            release/*.dmg
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    name: Publish GitHub release
+    needs: package
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - name: Download platform packages
+        uses: actions/download-artifact@v4
+        with:
+          pattern: desktop-*
+          path: release-assets
+          merge-multiple: true
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" release-assets/* --title "$GITHUB_REF_NAME" --generate-notes

@@ -42,7 +42,7 @@ Browser-local PDF tools and local image resizing, compression, and format conver
 
 ## In progress / not implemented
 
-- Validate Linux AppImage and macOS DMG builds on their supported hosts; configure code signing/notarization and release automation.
+- Cross-platform tag-triggered package builds and GitHub Release publication are automated. Validate Linux/macOS jobs in GitHub Actions; add owner-provided signing certificates and Apple notarization credentials to enable signed releases.
 - Additional PDF operations; document, video, audio, archive, and remote processing.
 - Explicit remote-processing consent flow and remote processor.
 
@@ -73,8 +73,9 @@ Browser-local PDF tools and local image resizing, compression, and format conver
 - `corepack pnpm build:web` — passed; Vite emits separate image and PDF worker assets. The PDF library remains in its worker bundle.
 - `corepack pnpm test:e2e --workers=1` — passed (25 Chromium tests for metadata stripping/opt-in safe EXIF preservation, JPEG format warnings, animated GIF fidelity and safety limits, PDF operations, invalid inputs, downloads, and unavailable capabilities).
 - `corepack pnpm build:desktop` — passed; generated the Windows x64 NSIS installer and unpacked application. Linux AppImage and macOS DMG builds require their corresponding hosts.
+- Release workflow — configured for Windows NSIS, Linux AppImage, macOS DMG, and GitHub Release publication; signing activates only when complete platform credentials are configured. Hosted platform jobs have not yet run.
 - Electron development runtime — launched successfully after adding PDF processing; the application window displayed "GaganStudio File Tools".
 
 ## Next milestone
 
-Code signing/notarization and production release automation.
+Validate the hosted multi-platform release workflow; configure and verify code signing/notarization with the release owner's credentials.
