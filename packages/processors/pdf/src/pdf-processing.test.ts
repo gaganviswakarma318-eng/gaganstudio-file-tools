@@ -1,4 +1,5 @@
 import { PDFDocument } from "pdf-lib";
+import { unzipSync } from "fflate";
 import { describe, expect, it } from "vitest";
 import type {
   PdfCompressRequest,
@@ -6,6 +7,7 @@ import type {
   PdfMergeRequest,
   PdfReorderPagesRequest,
   PdfRotatePagesRequest,
+  PdfSplitRequest,
 } from "@gsft/shared";
 import { processPdf } from "./pdf-processing";
 
@@ -60,6 +62,63 @@ describe("processPdf", () => {
     await expect(
       processPdf(request(input, "4"), performance.now()),
     ).rejects.toThrow("between 1 and 3");
+  });
+
+  it("splits PDFs into page groups and bundles named outputs in a ZIP", async () => {
+    const input = new Blob([Uint8Array.from(await createPdf())], { type: "application/pdf" });
+    const splitRequest: PdfSplitRequest = {
+      id: "split-test",
+      category: "pdf",
+      operation: "pdf.split",
+      input: { name: "source.pdf", mimeType: "application/pdf", data: input },
+      options: { pagesPerFile: 2 },
+    };
+
+    const result = await processPdf(splitRequest, performance.now());
+    const archive = unzipSync(new Uint8Array(await result.output.data.arrayBuffer()));
+    const entries = Object.entries(archive).sort(([first], [second]) =>
+      first.localeCompare(second),
+    );
+    const splitPages = await Promise.all(
+      entries.map(async ([name, bytes]) => ({
+        name,
+        pageCount: (await PDFDocument.load(bytes)).getPageCount(),
+      })),
+    );
+
+    expect(result.output).toMatchObject({
+      name: "source-split.zip",
+      mimeType: "application/zip",
+    });
+    expect(result.metadata).toMatchObject({
+      pageCount: 3,
+      sourcePageCount: 3,
+      splitFileCount: 2,
+      format: "zip",
+    });
+    expect(splitPages).toEqual([
+      { name: "source-pages-00001-00002.pdf", pageCount: 2 },
+      { name: "source-pages-00003-00003.pdf", pageCount: 1 },
+    ]);
+  });
+
+  it("rejects split settings that would create too many output files", async () => {
+    const document = await PDFDocument.create();
+    for (let page = 0; page < 201; page += 1) document.addPage();
+    const input = new Blob([Uint8Array.from(await document.save())], {
+      type: "application/pdf",
+    });
+    const splitRequest: PdfSplitRequest = {
+      id: "split-limit",
+      category: "pdf",
+      operation: "pdf.split",
+      input: { name: "many-pages.pdf", mimeType: "application/pdf", data: input },
+      options: { pagesPerFile: 1 },
+    };
+
+    await expect(processPdf(splitRequest, performance.now())).rejects.toThrow(
+      "within the 200-file limit",
+    );
   });
 
   it("reorders every page exactly as requested", async () => {

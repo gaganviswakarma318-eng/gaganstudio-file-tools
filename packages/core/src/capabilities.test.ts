@@ -46,8 +46,10 @@ describe("detectProcessingCapabilities", () => {
         "pdf.compress",
         "pdf.rotate-pages",
         "pdf.reorder-pages",
+        "pdf.split",
       ],
       location: "browser",
+      outputFormats: ["PDF", "ZIP"],
       available: true,
     });
     expect(detectPdfProcessingCapability(false).unavailableReason).toContain("Web Workers");

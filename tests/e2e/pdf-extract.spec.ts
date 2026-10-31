@@ -156,6 +156,30 @@ test("reorders all PDF pages and rejects incomplete page orders", async ({ page 
   await expect(page.locator(".notice")).toContainText("Include every page exactly once");
 });
 
+test("splits a PDF into page groups and downloads a ZIP", async ({ page }) => {
+  await page.getByLabel("PDF operation").selectOption("pdf.split");
+  await page.locator('input[aria-label="Choose a PDF"]').setInputFiles({
+    name: "three-pages.pdf",
+    mimeType: "application/pdf",
+    buffer: createPdfFixture(3),
+  });
+  await page.getByRole("spinbutton", { name: "Pages per file" }).fill("2");
+  await page.getByRole("button", { name: "Split PDF" }).click();
+
+  await expect(page.locator(".queue-file strong")).toHaveText("three-pages-split.zip");
+  await expect(page.locator(".queue-file")).toContainText("2 PDFs · 3 pages");
+
+  const downloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Download" }).click();
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toBe("three-pages-split.zip");
+  const stream = await download.createReadStream();
+  if (!stream) throw new Error("The generated split ZIP did not expose a stream.");
+  const chunks: Buffer[] = [];
+  for await (const chunk of stream) chunks.push(Buffer.from(chunk));
+  expect(Buffer.concat(chunks).subarray(0, 4).toString("ascii")).toBe("PK\u0003\u0004");
+});
+
 test("explains and disables PDF extraction when worker support is missing", async ({ page }) => {
   await page.addInitScript(() => {
     Object.defineProperty(globalThis, "Worker", { value: undefined, configurable: true });

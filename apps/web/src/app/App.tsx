@@ -7,6 +7,7 @@ import type {
   PdfMergeRequest,
   PdfReorderPagesRequest,
   PdfRotatePagesRequest,
+  PdfSplitRequest,
   ProcessingJob,
   ResizeFit,
   ResizeOptions,
@@ -239,8 +240,10 @@ function PdfWorkspace({
     | "pdf.compress"
     | "pdf.rotate-pages"
     | "pdf.reorder-pages"
+    | "pdf.split"
   >("pdf.extract-pages");
   const [pageSelection, setPageSelection] = useState("1");
+  const [pagesPerFile, setPagesPerFile] = useState(1);
   const [rotationDegrees, setRotationDegrees] = useState<90 | 180 | 270>(90);
   const [requestId, setRequestId] = useState<string>();
   const [localError, setLocalError] = useState("");
@@ -292,7 +295,8 @@ function PdfWorkspace({
       | PdfMergeRequest
       | PdfCompressRequest
       | PdfRotatePagesRequest
-      | PdfReorderPagesRequest =
+      | PdfReorderPagesRequest
+      | PdfSplitRequest =
       operation === "pdf.extract-pages"
         ? {
             id: requestId,
@@ -302,6 +306,15 @@ function PdfWorkspace({
             options: { pageSelection },
             requestedLocation: "browser",
           }
+        : operation === "pdf.split"
+          ? {
+              id: requestId,
+              category: "pdf",
+              operation,
+              input,
+              options: { pagesPerFile },
+              requestedLocation: "browser",
+            }
         : operation === "pdf.reorder-pages"
           ? {
               id: requestId,
@@ -366,7 +379,7 @@ function PdfWorkspace({
 
   return <>
     <section className="page-heading">
-      <div><div className="eyebrow">LOCAL PDF WORKSPACE</div><h1>Work with PDFs privately.</h1><p>Extract, rotate, or reorder pages, merge documents, or optimize PDF structure. Your originals stay untouched, and files never leave this device.</p></div>
+      <div><div className="eyebrow">LOCAL PDF WORKSPACE</div><h1>Work with PDFs privately.</h1><p>Extract, split, rotate, or reorder pages, merge documents, or optimize PDF structure. Your originals stay untouched, and files never leave this device.</p></div>
       <span className="heading-stamp">02 <span>/ 07</span></span>
     </section>
 
@@ -402,7 +415,7 @@ function PdfWorkspace({
     <div className="pdf-workbench">
       <section className="panel settings-panel pdf-settings">
         <div className="section-title-row"><div><h3>PDF operation</h3><span>All processing stays on this device</span></div><span className="settings-badge">PDF</span></div>
-        <label className="select-field pdf-operation-field"><span className="field-label">OPERATION</span><select aria-label="PDF operation" value={operation} onChange={(event) => setOperation(event.target.value as typeof operation)}><option value="pdf.extract-pages">Extract pages</option><option value="pdf.rotate-pages">Rotate pages</option><option value="pdf.reorder-pages">Reorder pages</option><option value="pdf.merge">Merge PDFs</option><option value="pdf.compress">Compress (lossless)</option></select></label>
+        <label className="select-field pdf-operation-field"><span className="field-label">OPERATION</span><select aria-label="PDF operation" value={operation} onChange={(event) => setOperation(event.target.value as typeof operation)}><option value="pdf.extract-pages">Extract pages</option><option value="pdf.split">Split PDF</option><option value="pdf.rotate-pages">Rotate pages</option><option value="pdf.reorder-pages">Reorder pages</option><option value="pdf.merge">Merge PDFs</option><option value="pdf.compress">Compress (lossless)</option></select></label>
         {(operation === "pdf.extract-pages" || operation === "pdf.rotate-pages" || operation === "pdf.reorder-pages") && <label className="pdf-pages-field">
           <span className="field-label">{operation === "pdf.extract-pages" ? "PAGES TO EXTRACT" : operation === "pdf.rotate-pages" ? "PAGES TO ROTATE" : "NEW PAGE ORDER"}</span>
           <input aria-label={operation === "pdf.extract-pages" ? "Pages to extract" : operation === "pdf.rotate-pages" ? "Pages to rotate" : "New page order"} value={pageSelection} onChange={(event) => setPageSelection(event.target.value)} placeholder={operation === "pdf.reorder-pages" ? "3, 1, 2" : "1, 3-5"} />
@@ -410,12 +423,13 @@ function PdfWorkspace({
         </label>}
         {operation === "pdf.rotate-pages" && <label className="select-field pdf-operation-field"><span className="field-label">CLOCKWISE ROTATION</span><select aria-label="Clockwise rotation" value={rotationDegrees} onChange={(event) => setRotationDegrees(Number(event.target.value) as 90 | 180 | 270)}><option value={90}>90°</option><option value={180}>180°</option><option value={270}>270°</option></select></label>}
         {operation === "pdf.merge" && <p className="pdf-operation-note">Choose two or more PDFs. Pages are combined in the order shown in the file picker. Up to 50 files and 250 MB total.</p>}
+        {operation === "pdf.split" && <label className="pdf-pages-field"><span className="field-label">PAGES PER PDF</span><input aria-label="Pages per file" type="number" min="1" max="20000" value={pagesPerFile} onChange={(event) => setPagesPerFile(Number(event.target.value))} /><small>Split outputs are bundled in one ZIP. Up to 200 PDFs and 250 MB of generated PDFs.</small></label>}
         {operation === "pdf.compress" && <p className="pdf-operation-note">Lossless structural optimization only. Embedded images are not recompressed, so size reduction is not guaranteed.</p>}
         {operation === "pdf.rotate-pages" && <p className="pdf-operation-note">Rotation changes page display orientation without changing page content. Pages not selected remain unchanged.</p>}
         {operation === "pdf.reorder-pages" && <p className="pdf-operation-note">Page content and display orientation are preserved. Include every source page exactly once.</p>}
         {unavailableReason && <p className="capability-warning" role="status">{unavailableReason}</p>}
         <div className="pdf-actions">
-          <button className="primary-button" onClick={() => void process()} disabled={!capabilityAvailable || isProcessing}>{operation === "pdf.extract-pages" ? "Extract pages" : operation === "pdf.rotate-pages" ? "Rotate pages" : operation === "pdf.reorder-pages" ? "Reorder pages" : operation === "pdf.merge" ? "Merge PDFs" : "Compress PDF"} <span>↗</span></button>
+          <button className="primary-button" onClick={() => void process()} disabled={!capabilityAvailable || isProcessing}>{operation === "pdf.extract-pages" ? "Extract pages" : operation === "pdf.split" ? "Split PDF" : operation === "pdf.rotate-pages" ? "Rotate pages" : operation === "pdf.reorder-pages" ? "Reorder pages" : operation === "pdf.merge" ? "Merge PDFs" : "Compress PDF"} <span>↗</span></button>
           {isProcessing && activeJob && <button className="cancel-button" onClick={() => manager.cancel(activeJob.id)}>Cancel</button>}
         </div>
         <p className="privacy-note"><span>◈</span> Processed locally in a background worker. No remote upload.</p>
@@ -423,7 +437,7 @@ function PdfWorkspace({
 
       <aside className="panel pdf-info-panel">
         <div className="section-title-row"><div><h3>PDF tools</h3><span>Simple, private, reversible</span></div><span className="tool-count">03</span></div>
-        <div className="pdf-info-copy"><span>▤</span><p><strong>Separate output</strong><br />Extract and merge create a new PDF. Your source files are never overwritten.</p></div>
+        <div className="pdf-info-copy"><span>▤</span><p><strong>Separate output</strong><br />PDF operations create a new file. Split pages are bundled in a ZIP. Your source is never overwritten.</p></div>
         <div className="pdf-info-copy"><span>◈</span><p><strong>Local-only processing</strong><br />The PDF is handled on this device. Remote processing is not configured.</p></div>
         <div className="pdf-info-copy"><span>!</span><p><strong>Fidelity and compression</strong><br />Interactive forms, attachments, and cross-page navigation may not be retained. Compression is lossless and does not recompress images.</p></div>
       </aside>
@@ -434,7 +448,7 @@ function PdfWorkspace({
       {result ? <div className="queue-item">
         <div className="queue-row">
           <div className="queue-file-icon">▤</div>
-          <div className="queue-file"><strong>{result.output.name}</strong><span>{result.metadata.pageCount} pages · {formatBytes(result.statistics.outputBytes)} output · {formatBytes(result.statistics.inputBytes)} original · {result.statistics.durationMs} ms</span></div>
+            <div className="queue-file"><strong>{result.output.name}</strong><span>{result.metadata.splitFileCount ? `${result.metadata.splitFileCount} PDFs · ` : ""}{result.metadata.pageCount} pages · {formatBytes(result.statistics.outputBytes)} output · {formatBytes(result.statistics.inputBytes)} original · {result.statistics.durationMs} ms</span></div>
           <div className="queue-status"><span className="status-mark completed" />Ready</div>
           <button className="download-button" onClick={download}>Download <span>↓</span></button>
         </div>

@@ -1,4 +1,5 @@
 import { degrees, PDFDocument, ParseSpeeds } from "pdf-lib";
+import { zipSync } from "fflate";
 import type {
   PdfProcessingRequest,
   ProcessingInput,
@@ -9,6 +10,8 @@ import { parsePageSelection } from "./page-selection";
 export const MAX_PDF_FILE_BYTES = 250 * 1024 * 1024;
 export const MAX_MERGE_INPUTS = 50;
 export const MAX_PDF_PAGES = 20_000;
+export const MAX_SPLIT_FILES = 200;
+export const MAX_SPLIT_OUTPUT_BYTES = 250 * 1024 * 1024;
 const PDF_SIGNATURE = "%PDF-";
 const PDF_MERGE_WARNING =
   "Interactive forms, document-level attachments, and cross-page navigation may not be preserved.";
@@ -50,30 +53,55 @@ function createResult(
   warnings: string[],
   sourcePageCount: number,
 ): Promise<ProcessingResult> {
-  return outputDocument.save({ useObjectStreams: true }).then((saved) => {
-    const data = new Blob([Uint8Array.from(saved)], { type: "application/pdf" });
-    const baseName = request.input.name.replace(/\.pdf$/i, "").trim() || "document";
-    return {
-      requestId: request.id,
-      location: "browser",
-      output: {
-        data,
-        name: `${baseName}-${outputSuffix}.pdf`,
-        mimeType: "application/pdf",
-      },
-      metadata: {
-        sourcePageCount,
-        pageCount: outputDocument.getPageCount(),
-        format: "pdf",
-      },
-      statistics: {
-        inputBytes,
-        outputBytes: data.size,
-        durationMs: Math.max(0, Math.round(performance.now() - startedAt)),
-      },
+  return outputDocument.save({ useObjectStreams: true }).then((saved) =>
+    createResultFromData(
+      request,
+      new Blob([Uint8Array.from(saved)], { type: "application/pdf" }),
+      `${outputBaseName(request.input.name)}-${outputSuffix}.pdf`,
+      "application/pdf",
+      startedAt,
+      inputBytes,
       warnings,
-    };
-  });
+      sourcePageCount,
+      outputDocument.getPageCount(),
+    ),
+  );
+}
+
+function outputBaseName(name: string): string {
+  const baseName = name.replace(/\.pdf$/i, "").trim() || "document";
+  return baseName.replace(/[\\/:*?"<>|]/g, "_");
+}
+
+function createResultFromData(
+  request: PdfProcessingRequest,
+  data: Blob,
+  name: string,
+  mimeType: string,
+  startedAt: number,
+  inputBytes: number,
+  warnings: string[],
+  sourcePageCount: number,
+  pageCount: number,
+  splitFileCount?: number,
+): ProcessingResult {
+  return {
+    requestId: request.id,
+    location: "browser",
+    output: { data, name, mimeType },
+    metadata: {
+      sourcePageCount,
+      pageCount,
+      format: mimeType === "application/zip" ? "zip" : "pdf",
+      ...(splitFileCount === undefined ? {} : { splitFileCount }),
+    },
+    statistics: {
+      inputBytes,
+      outputBytes: data.size,
+      durationMs: Math.max(0, Math.round(performance.now() - startedAt)),
+    },
+    warnings: [...warnings],
+  };
 }
 
 export async function processPdf(
@@ -118,6 +146,61 @@ export async function processPdf(
       "merged",
       [PDF_MERGE_WARNING],
       sourcePageCount,
+    );
+  }
+
+  if (request.operation === "pdf.split") {
+    const pagesPerFile = request.options.pagesPerFile;
+    if (!Number.isSafeInteger(pagesPerFile) || pagesPerFile < 1 || pagesPerFile > MAX_PDF_PAGES) {
+      throw new Error(`Pages per file must be a whole number between 1 and ${MAX_PDF_PAGES.toLocaleString()}.`);
+    }
+
+    const source = await loadPdf(request.input);
+    const sourcePageCount = source.getPageCount();
+    const fileCount = Math.ceil(sourcePageCount / pagesPerFile);
+    if (fileCount > MAX_SPLIT_FILES) {
+      throw new Error(
+        `This split would create ${fileCount.toLocaleString()} files. Choose more pages per file to stay within the ${MAX_SPLIT_FILES}-file limit.`,
+      );
+    }
+
+    const baseName = outputBaseName(request.input.name);
+    const entries: Record<string, Uint8Array> = {};
+    let outputBytes = 0;
+    for (let firstPage = 0; firstPage < sourcePageCount; firstPage += pagesPerFile) {
+      const lastPage = Math.min(firstPage + pagesPerFile, sourcePageCount);
+      const splitDocument = await PDFDocument.create();
+      const pages = await splitDocument.copyPages(
+        source,
+        Array.from({ length: lastPage - firstPage }, (_, index) => firstPage + index),
+      );
+      for (const page of pages) splitDocument.addPage(page);
+      const saved = Uint8Array.from(await splitDocument.save({ useObjectStreams: true }));
+      outputBytes += saved.byteLength;
+      if (outputBytes > MAX_SPLIT_OUTPUT_BYTES) {
+        throw new Error("Split PDF outputs exceed the 250 MB total output limit.");
+      }
+
+      const pageStart = String(firstPage + 1).padStart(5, "0");
+      const pageEnd = String(lastPage).padStart(5, "0");
+      entries[`${baseName}-pages-${pageStart}-${pageEnd}.pdf`] = saved;
+    }
+
+    const archive = zipSync(entries, { level: 0 });
+    if (archive.byteLength > MAX_SPLIT_OUTPUT_BYTES) {
+      throw new Error("The split PDF ZIP exceeds the 250 MB total output limit.");
+    }
+    return createResultFromData(
+      request,
+      new Blob([archive], { type: "application/zip" }),
+      `${baseName}-split.zip`,
+      "application/zip",
+      startedAt,
+      request.input.data.size,
+      [PDF_MERGE_WARNING],
+      sourcePageCount,
+      sourcePageCount,
+      fileCount,
     );
   }
 

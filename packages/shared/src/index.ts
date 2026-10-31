@@ -27,7 +27,8 @@ export type ProcessingOperation =
   | "pdf.merge"
   | "pdf.compress"
   | "pdf.rotate-pages"
-  | "pdf.reorder-pages";
+  | "pdf.reorder-pages"
+  | "pdf.split";
 export type ProcessingStage = "validating" | "decoding" | "processing" | "encoding";
 
 export interface ProcessingInput {
@@ -99,12 +100,24 @@ export interface PdfReorderPagesRequest {
   requestedLocation?: ProcessingLocation;
 }
 
+export interface PdfSplitRequest {
+  id: string;
+  category: "pdf";
+  operation: "pdf.split";
+  input: ProcessingInput;
+  options: {
+    pagesPerFile: number;
+  };
+  requestedLocation?: ProcessingLocation;
+}
+
 export type PdfProcessingRequest =
   | PdfExtractPagesRequest
   | PdfMergeRequest
   | PdfCompressRequest
   | PdfRotatePagesRequest
-  | PdfReorderPagesRequest;
+  | PdfReorderPagesRequest
+  | PdfSplitRequest;
 
 export type ProcessingRequest = ImageResizeRequest | PdfProcessingRequest;
 
@@ -134,6 +147,7 @@ export interface ProcessingMetadata {
   sourcePageCount?: number;
   rotatedPageCount?: number;
   rotationDegrees?: number;
+  splitFileCount?: number;
 }
 
 export interface ProcessingStatistics {

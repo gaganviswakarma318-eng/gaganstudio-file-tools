@@ -61,11 +61,12 @@ export function detectPdfProcessingCapability(
       "pdf.compress",
       "pdf.rotate-pages",
       "pdf.reorder-pages",
+      "pdf.split",
     ],
     location: "browser",
     inputFormats: ["PDF"],
-    outputFormats: ["PDF"],
-    requirements: ["Web Workers", "pdf-lib"],
+    outputFormats: ["PDF", "ZIP"],
+    requirements: ["Web Workers", "pdf-lib", "fflate"],
     available: workerAvailable,
     ...(workerAvailable
       ? {}
