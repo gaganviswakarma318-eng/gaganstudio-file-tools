@@ -87,6 +87,41 @@ test("reports invalid PDFs and out-of-range page selections", async ({ page }) =
   await expect(page.getByRole("button", { name: "Download" })).toHaveCount(0);
 });
 
+test("merges selected PDFs in order through the local processing queue", async ({ page }) => {
+  await page.getByLabel("PDF operation").selectOption("pdf.merge");
+  await page.locator('input[aria-label="Choose a PDF"]').setInputFiles([
+    {
+      name: "first.pdf",
+      mimeType: "application/pdf",
+      buffer: createPdfFixture(2),
+    },
+    {
+      name: "second.pdf",
+      mimeType: "application/pdf",
+      buffer: createPdfFixture(1),
+    },
+  ]);
+  await expect(page.getByText("2 PDFs selected")).toBeVisible();
+  await page.getByRole("button", { name: "Merge PDFs" }).click();
+
+  await expect(page.locator(".queue-file strong")).toHaveText("first-merged.pdf");
+  await expect(page.getByText(/3 pages ·/)).toBeVisible();
+});
+
+test("losslessly optimizes a PDF and discloses compression limitations", async ({ page }) => {
+  await page.getByLabel("PDF operation").selectOption("pdf.compress");
+  await page.locator('input[aria-label="Choose a PDF"]').setInputFiles({
+    name: "source.pdf",
+    mimeType: "application/pdf",
+    buffer: createPdfFixture(2),
+  });
+  await expect(page.getByText(/images are not recompressed/i)).toBeVisible();
+  await page.getByRole("button", { name: "Compress PDF" }).click();
+
+  await expect(page.locator(".queue-file strong")).toHaveText("source-optimized.pdf");
+  await expect(page.locator(".pdf-warning")).toContainText("size reduction is not guaranteed");
+});
+
 test("explains and disables PDF extraction when worker support is missing", async ({ page }) => {
   await page.addInitScript(() => {
     Object.defineProperty(globalThis, "Worker", { value: undefined, configurable: true });

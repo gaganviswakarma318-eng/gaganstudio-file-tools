@@ -21,7 +21,11 @@ export interface ResizeOptions {
 
 export type FileCategory = "image" | "pdf" | "document" | "video" | "audio" | "archive";
 export type ProcessingLocation = "browser" | "desktop" | "remote";
-export type ProcessingOperation = "image.resize" | "pdf.extract-pages";
+export type ProcessingOperation =
+  | "image.resize"
+  | "pdf.extract-pages"
+  | "pdf.merge"
+  | "pdf.compress";
 export type ProcessingStage = "validating" | "decoding" | "processing" | "encoding";
 
 export interface ProcessingInput {
@@ -50,7 +54,32 @@ export interface PdfExtractPagesRequest {
   requestedLocation?: ProcessingLocation;
 }
 
-export type ProcessingRequest = ImageResizeRequest | PdfExtractPagesRequest;
+export interface PdfMergeRequest {
+  id: string;
+  category: "pdf";
+  operation: "pdf.merge";
+  input: ProcessingInput;
+  options: {
+    additionalInputs: ProcessingInput[];
+  };
+  requestedLocation?: ProcessingLocation;
+}
+
+export interface PdfCompressRequest {
+  id: string;
+  category: "pdf";
+  operation: "pdf.compress";
+  input: ProcessingInput;
+  options: Record<string, never>;
+  requestedLocation?: ProcessingLocation;
+}
+
+export type PdfProcessingRequest =
+  | PdfExtractPagesRequest
+  | PdfMergeRequest
+  | PdfCompressRequest;
+
+export type ProcessingRequest = ImageResizeRequest | PdfProcessingRequest;
 
 export interface ProcessingProgress {
   stage: ProcessingStage | "reading-pages" | "writing-pdf";

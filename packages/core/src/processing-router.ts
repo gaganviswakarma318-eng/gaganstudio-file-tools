@@ -73,7 +73,14 @@ export class ProcessingRouter {
     if (!result.output.name.trim()) {
       throw new Error("The processor returned an output without a file name.");
     }
-    if (result.statistics.inputBytes !== request.input.data.size) {
+    const expectedInputBytes =
+      request.operation === "pdf.merge"
+        ? [request.input, ...request.options.additionalInputs].reduce(
+            (total, input) => total + input.data.size,
+            0,
+          )
+        : request.input.data.size;
+    if (result.statistics.inputBytes !== expectedInputBytes) {
       throw new Error("The processor returned inconsistent input size information.");
     }
     if (result.statistics.outputBytes !== result.output.data.size) {

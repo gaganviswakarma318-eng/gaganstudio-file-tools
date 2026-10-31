@@ -1,7 +1,11 @@
 import { PDFDocument } from "pdf-lib";
 import { describe, expect, it } from "vitest";
-import type { PdfExtractPagesRequest } from "@gsft/shared";
-import { extractPdfPages } from "./pdf-processing";
+import type {
+  PdfCompressRequest,
+  PdfExtractPagesRequest,
+  PdfMergeRequest,
+} from "@gsft/shared";
+import { processPdf } from "./pdf-processing";
 
 async function createPdf(): Promise<Uint8Array> {
   const document = await PDFDocument.create();
@@ -21,10 +25,10 @@ function request(data: Blob, pageSelection: string): PdfExtractPagesRequest {
   };
 }
 
-describe("extractPdfPages", () => {
+describe("processPdf", () => {
   it("extracts selected pages in the requested order and reports result metadata", async () => {
     const input = new Blob([Uint8Array.from(await createPdf())], { type: "application/pdf" });
-    const result = await extractPdfPages(request(input, "3, 1"), performance.now());
+    const result = await processPdf(request(input, "3, 1"), performance.now());
     const output = await PDFDocument.load(await result.output.data.arrayBuffer());
 
     expect(output.getPageCount()).toBe(2);
@@ -45,14 +49,79 @@ describe("extractPdfPages", () => {
 
   it("rejects content without a PDF signature", async () => {
     await expect(
-      extractPdfPages(request(new Blob(["not a PDF"]), "1"), performance.now()),
+      processPdf(request(new Blob(["not a PDF"]), "1"), performance.now()),
     ).rejects.toThrow("valid PDF");
   });
 
   it("rejects page selections outside the source document", async () => {
     const input = new Blob([Uint8Array.from(await createPdf())], { type: "application/pdf" });
     await expect(
-      extractPdfPages(request(input, "4"), performance.now()),
+      processPdf(request(input, "4"), performance.now()),
     ).rejects.toThrow("between 1 and 3");
+  });
+
+  it("merges PDFs in input order and reports combined input size", async () => {
+    const first = new Blob([Uint8Array.from(await createPdf())], { type: "application/pdf" });
+    const secondDocument = await PDFDocument.create();
+    secondDocument.addPage([500, 600]);
+    const second = new Blob([Uint8Array.from(await secondDocument.save())], {
+      type: "application/pdf",
+    });
+    const mergeRequest: PdfMergeRequest = {
+      id: "merge-test",
+      category: "pdf",
+      operation: "pdf.merge",
+      input: { name: "first.pdf", mimeType: "application/pdf", data: first },
+      options: {
+        additionalInputs: [
+          { name: "second.pdf", mimeType: "application/pdf", data: second },
+        ],
+      },
+    };
+
+    const result = await processPdf(mergeRequest, performance.now());
+    const output = await PDFDocument.load(await result.output.data.arrayBuffer());
+
+    expect(output.getPageCount()).toBe(4);
+    expect(output.getPages().map((page) => page.getSize())).toEqual([
+      { width: 100, height: 200 },
+      { width: 200, height: 300 },
+      { width: 300, height: 400 },
+      { width: 500, height: 600 },
+    ]);
+    expect(result.output.name).toBe("first-merged.pdf");
+    expect(result.statistics.inputBytes).toBe(first.size + second.size);
+  });
+
+  it("requires at least two merge inputs", async () => {
+    const input = new Blob([Uint8Array.from(await createPdf())], { type: "application/pdf" });
+    const mergeRequest: PdfMergeRequest = {
+      id: "merge-one",
+      category: "pdf",
+      operation: "pdf.merge",
+      input: { name: "only.pdf", mimeType: "application/pdf", data: input },
+      options: { additionalInputs: [] },
+    };
+
+    await expect(processPdf(mergeRequest, performance.now())).rejects.toThrow(
+      "at least two PDFs",
+    );
+  });
+
+  it("reserializes PDFs without claiming guaranteed size reduction", async () => {
+    const input = new Blob([Uint8Array.from(await createPdf())], { type: "application/pdf" });
+    const compressRequest: PdfCompressRequest = {
+      id: "compress-test",
+      category: "pdf",
+      operation: "pdf.compress",
+      input: { name: "source.pdf", mimeType: "application/pdf", data: input },
+      options: {},
+    };
+    const result = await processPdf(compressRequest, performance.now());
+    const output = await PDFDocument.load(await result.output.data.arrayBuffer());
+
+    expect(output.getPageCount()).toBe(3);
+    expect(result.output.name).toBe("source-optimized.pdf");
+    expect(result.warnings.join(" ")).toContain("does not recompress embedded images");
   });
 });

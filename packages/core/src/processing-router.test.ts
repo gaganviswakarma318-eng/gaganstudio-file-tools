@@ -3,6 +3,7 @@ import type {
   FileProcessor,
   ImageResizeRequest,
   PdfExtractPagesRequest,
+  PdfProcessingRequest,
   ProcessingContext,
   ProcessingResult,
 } from "@gsft/shared";
@@ -141,11 +142,11 @@ describe("ProcessingRouter", () => {
         mimeType: "application/pdf",
       },
     }));
-    const processor: FileProcessor<PdfExtractPagesRequest> = {
+    const processor: FileProcessor<PdfProcessingRequest> = {
       capability: {
-        id: "browser.pdf.extract-pages",
+        id: "browser.pdf",
         category: "pdf",
-        operations: ["pdf.extract-pages"],
+        operations: ["pdf.extract-pages", "pdf.merge", "pdf.compress"],
         location: "browser",
         inputFormats: ["PDF"],
         outputFormats: ["PDF"],

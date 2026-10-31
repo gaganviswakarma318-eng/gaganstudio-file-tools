@@ -4,7 +4,7 @@ Updated: 2026-10-31
 
 ## Current milestone
 
-Browser-local PDF page extraction behind the shared processing contract, alongside the verified image-resize flow.
+Browser-local PDF extraction, merge, and lossless structural optimization behind the shared processing contract, alongside the verified image-resize flow.
 
 ## Implemented
 
@@ -14,7 +14,9 @@ Browser-local PDF page extraction behind the shared processing contract, alongsi
 - Processing router that selects available processors by category, operation, and requested execution location, and validates returned request IDs and output size.
 - Browser feature probes for Worker, createImageBitmap, OffscreenCanvas, and OffscreenCanvas encoding.
 - Local PDF selected-page extraction using `pdf-lib` in a dedicated Web Worker, with strict page/range validation, PDF signature and file-size checks, and page-order preservation.
-- Separate PDF extraction workspace with local-only messaging, page selection, cancel control, result details, and download; PDF jobs use the shared cancellable queue and the source PDF is never overwritten.
+- Local PDF merge in selected order, with input-count, combined-size, and total-page limits.
+- Lossless structural PDF optimization using object streams; it does not recompress embedded images and does not guarantee a smaller file.
+- Separate PDF workspace with local-only messaging, operation selection, cancel control, result details, and download; PDF jobs use the shared cancellable queue and source files are never overwritten.
 - Browser image resizing for PNG, JPEG, and WebP with inside, cover/crop, fill, quality, and prevent-enlargement settings.
 - Dedicated module Web Worker using `createImageBitmap` and `OffscreenCanvas`; the UI thread remains available during decode, draw, and encode.
 - Queue results show source/output dimensions and byte sizes, with a savings percentage when output is smaller.
@@ -31,7 +33,7 @@ Browser-local PDF page extraction behind the shared processing contract, alongsi
 
 - Production desktop packaging and native open/save dialogs; Electron Builder packaging was attempted but its network fetch was denied in this environment.
 - Persistent history, queue retry/pause controls, image compression independent of resizing, animated-image processing, and metadata controls.
-- PDF merge, compression, and other page operations; document, video, audio, archive, and remote processing.
+- Additional PDF operations; document, video, audio, archive, and remote processing.
 - Explicit remote-processing consent flow and remote processor.
 
 ## Known limitations
@@ -42,18 +44,19 @@ Browser-local PDF page extraction behind the shared processing contract, alongsi
 - AVIF/TIFF detection is informational; decoding depends on the browser.
 - Canvas exports strip metadata. JPEG output uses a white background; PNG/WebP retain alpha.
 - PDF page extraction may not preserve interactive forms, document-level attachments, or cross-page navigation.
+- PDF merge and optimization may not preserve interactive forms, document-level attachments, or cross-page navigation. Optimization may not reduce file size.
 - The browser encoder does not expose reliable percentage progress, so active jobs use an indeterminate progress indicator.
 - Electron currently uses the browser processing path and does not bundle native image tools.
 
 ## Validation status
 
 - `corepack pnpm typecheck` — passed across all workspaces.
-- `corepack pnpm test` — passed (30 tests), including PDF execution through the shared queue.
+- `corepack pnpm test` — passed (33 tests), including PDF execution through the shared queue and merge/optimization tests.
 - `corepack pnpm build:web` — passed; Vite emits separate image and PDF worker assets. The PDF library remains in its worker bundle.
-- `corepack pnpm test:e2e` — passed (6 Chromium tests covering image/PDF workers, valid and invalid inputs, downloads, and unavailable capabilities).
+- `corepack pnpm test:e2e` — passed (8 Chromium tests covering image/PDF workers, extraction, merge, optimization, invalid inputs, downloads, and unavailable capabilities).
 - `corepack pnpm build:desktop` — web build passed, but Electron Builder could not finish because its platform-resource download failed with network `EACCES`.
 - Electron development runtime — launched successfully after adding PDF processing; the application window displayed "GaganStudio File Tools".
 
 ## Next milestone
 
-Add PDF merge and compression only after reviewing their fidelity/quality tradeoffs and expose each operation through this processor capability registry.
+Add PDF splitting or page rotation after reviewing PDF fidelity tradeoffs and expose each operation through the shared processor capability registry.

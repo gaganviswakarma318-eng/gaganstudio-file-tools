@@ -36,11 +36,11 @@ describe("detectProcessingCapabilities", () => {
     expect(capability?.unavailableReason).toContain("OffscreenCanvas");
   });
 
-  it("reports PDF page extraction availability independently from canvas APIs", () => {
+  it("reports PDF operations availability independently from canvas APIs", () => {
     expect(detectPdfProcessingCapability(true)).toMatchObject({
-      id: "browser.pdf.extract-pages",
+      id: "browser.pdf",
       category: "pdf",
-      operations: ["pdf.extract-pages"],
+      operations: ["pdf.extract-pages", "pdf.merge", "pdf.compress"],
       location: "browser",
       available: true,
     });

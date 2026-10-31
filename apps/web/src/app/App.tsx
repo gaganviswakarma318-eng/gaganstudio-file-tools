@@ -2,7 +2,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { JobManager, ProcessingRouter } from "@gsft/core";
 import type {
   ImageFormat,
+  PdfCompressRequest,
   PdfExtractPagesRequest,
+  PdfMergeRequest,
   ProcessingJob,
   ResizeFit,
   ResizeOptions,
@@ -228,6 +230,10 @@ function PdfWorkspace({
   unavailableReason?: string;
 }) {
   const [file, setFile] = useState<File>();
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const [operation, setOperation] = useState<
+    "pdf.extract-pages" | "pdf.merge" | "pdf.compress"
+  >("pdf.extract-pages");
   const [pageSelection, setPageSelection] = useState("1");
   const [requestId, setRequestId] = useState<string>();
   const [localError, setLocalError] = useState("");
@@ -251,29 +257,62 @@ function PdfWorkspace({
     [manager],
   );
 
-  const selectFile = (selected?: File) => {
+  const selectFiles = (selected: FileList | File[]) => {
     if (activeRequestRef.current) manager.cancel(activeRequestRef.current);
     activeRequestRef.current = undefined;
-    setFile(selected);
+    const selectedList = Array.from(selected);
+    const next = operation === "pdf.merge" ? selectedList : selectedList.slice(0, 1);
+    setSelectedFiles(next);
+    setFile(next[0]);
     setRequestId(undefined);
     setLocalError("");
   };
 
   const process = () => {
     if (!file) {
-      setLocalError("Choose a PDF before extracting pages.");
+      setLocalError("Choose a PDF before processing.");
+      return;
+    }
+    if (operation === "pdf.merge" && selectedFiles.length < 2) {
+      setLocalError("Choose at least two PDFs to merge.");
       return;
     }
 
     const requestId = crypto.randomUUID();
-    const request: PdfExtractPagesRequest = {
-      id: requestId,
-      category: "pdf",
-      operation: "pdf.extract-pages",
-      input: { name: file.name, mimeType: file.type, data: file },
-      options: { pageSelection },
-      requestedLocation: "browser",
-    };
+    const input = { name: file.name, mimeType: file.type || "application/pdf", data: file };
+    const request: PdfExtractPagesRequest | PdfMergeRequest | PdfCompressRequest =
+      operation === "pdf.extract-pages"
+        ? {
+            id: requestId,
+            category: "pdf",
+            operation,
+            input,
+            options: { pageSelection },
+            requestedLocation: "browser",
+          }
+        : operation === "pdf.merge"
+          ? {
+              id: requestId,
+              category: "pdf",
+              operation,
+              input,
+              options: {
+                additionalInputs: selectedFiles.slice(1).map((selected) => ({
+                  name: selected.name,
+                  mimeType: selected.type || "application/pdf",
+                  data: selected,
+                })),
+              },
+              requestedLocation: "browser",
+            }
+          : {
+              id: requestId,
+              category: "pdf",
+              operation,
+              input,
+              options: {},
+              requestedLocation: "browser",
+            };
 
     try {
       activeRequestRef.current = manager.enqueueRequest(request, file);
@@ -293,10 +332,11 @@ function PdfWorkspace({
     anchor.click();
     window.setTimeout(() => URL.revokeObjectURL(url), 1_000);
   };
+  const selectedSize = selectedFiles.reduce((total, selected) => total + selected.size, 0);
 
   return <>
     <section className="page-heading">
-      <div><div className="eyebrow">LOCAL PDF WORKSPACE</div><h1>Keep the pages you need.</h1><p>Extract selected pages into a new PDF. Your original stays untouched, and your file never leaves this device.</p></div>
+      <div><div className="eyebrow">LOCAL PDF WORKSPACE</div><h1>Work with PDFs privately.</h1><p>Extract pages, merge documents, or optimize PDF structure. Your originals stay untouched, and files never leave this device.</p></div>
       <span className="heading-stamp">02 <span>/ 07</span></span>
     </section>
 
@@ -307,7 +347,7 @@ function PdfWorkspace({
       onDrop={(event) => {
         event.preventDefault();
         setIsDragging(false);
-        selectFile(event.dataTransfer.files[0]);
+        selectFiles(event.dataTransfer.files);
       }}
     >
       <input
@@ -316,44 +356,48 @@ function PdfWorkspace({
         type="file"
         accept="application/pdf,.pdf"
         aria-label="Choose a PDF"
+        multiple={operation === "pdf.merge"}
         onChange={(event) => {
-          selectFile(event.target.files?.[0]);
+          if (event.target.files) selectFiles(event.target.files);
           event.target.value = "";
         }}
       />
       <div className="upload-art" aria-hidden="true"><div className="upload-art-back" /><div className="upload-art-front"><span>▤</span><i /></div><div className="upload-sparkle">✳</div></div>
-      <div className="drop-copy"><h2>{file ? file.name : "Drop a PDF here"}</h2><p>{file ? `${formatBytes(file.size)} · Original file will not be changed` : <>or <button className="text-button" onClick={() => inputRef.current?.click()}>browse files</button> from your device</>}</p></div>
-      <div className="drop-meta"><span>PDF</span><i /> Up to 250 MB</div>
+      <div className="drop-copy"><h2>{file ? operation === "pdf.merge" && selectedFiles.length > 1 ? `${selectedFiles.length} PDFs selected` : file.name : operation === "pdf.merge" ? "Drop PDFs to merge" : "Drop a PDF here"}</h2><p>{file ? `${formatBytes(selectedSize)} · Original files will not be changed` : <>or <button className="text-button" onClick={() => inputRef.current?.click()}>browse files</button> from your device</>}</p></div>
+      <div className="drop-meta"><span>PDF</span><i /> Up to 250 MB total</div>
     </section>
 
     {error && <div className="notice" role="alert"><span>!</span>{error}<button onClick={() => setLocalError("")} aria-label="Dismiss">×</button></div>}
 
     <div className="pdf-workbench">
       <section className="panel settings-panel pdf-settings">
-        <div className="section-title-row"><div><h3>Extract PDF pages</h3><span>Choose individual pages or a page range</span></div><span className="settings-badge">PDF</span></div>
-        <label className="pdf-pages-field">
+        <div className="section-title-row"><div><h3>PDF operation</h3><span>All processing stays on this device</span></div><span className="settings-badge">PDF</span></div>
+        <label className="select-field pdf-operation-field"><span className="field-label">OPERATION</span><select aria-label="PDF operation" value={operation} onChange={(event) => setOperation(event.target.value as typeof operation)}><option value="pdf.extract-pages">Extract pages</option><option value="pdf.merge">Merge PDFs</option><option value="pdf.compress">Compress (lossless)</option></select></label>
+        {operation === "pdf.extract-pages" && <label className="pdf-pages-field">
           <span className="field-label">PAGES TO EXTRACT</span>
           <input aria-label="Pages to extract" value={pageSelection} onChange={(event) => setPageSelection(event.target.value)} placeholder="1, 3-5" />
           <small>Use commas and ranges, for example 1, 3-5. Page numbers are checked against the selected PDF.</small>
-        </label>
+        </label>}
+        {operation === "pdf.merge" && <p className="pdf-operation-note">Choose two or more PDFs. Pages are combined in the order shown in the file picker. Up to 50 files and 250 MB total.</p>}
+        {operation === "pdf.compress" && <p className="pdf-operation-note">Lossless structural optimization only. Embedded images are not recompressed, so size reduction is not guaranteed.</p>}
         {unavailableReason && <p className="capability-warning" role="status">{unavailableReason}</p>}
         <div className="pdf-actions">
-          <button className="primary-button" onClick={() => void process()} disabled={!capabilityAvailable || status === "processing"}>Extract pages <span>↗</span></button>
+          <button className="primary-button" onClick={() => void process()} disabled={!capabilityAvailable || isProcessing}>{operation === "pdf.extract-pages" ? "Extract pages" : operation === "pdf.merge" ? "Merge PDFs" : "Compress PDF"} <span>↗</span></button>
           {isProcessing && activeJob && <button className="cancel-button" onClick={() => manager.cancel(activeJob.id)}>Cancel</button>}
         </div>
         <p className="privacy-note"><span>◈</span> Processed locally in a background worker. No remote upload.</p>
       </section>
 
       <aside className="panel pdf-info-panel">
-        <div className="section-title-row"><div><h3>PDF page extraction</h3><span>Simple, private, reversible</span></div><span className="tool-count">01</span></div>
-        <div className="pdf-info-copy"><span>▤</span><p><strong>Original pages stay intact</strong><br />Selected pages are copied into a separate PDF. The source file is never overwritten.</p></div>
+        <div className="section-title-row"><div><h3>PDF tools</h3><span>Simple, private, reversible</span></div><span className="tool-count">03</span></div>
+        <div className="pdf-info-copy"><span>▤</span><p><strong>Separate output</strong><br />Extract and merge create a new PDF. Your source files are never overwritten.</p></div>
         <div className="pdf-info-copy"><span>◈</span><p><strong>Local-only processing</strong><br />The PDF is handled on this device. Remote processing is not configured.</p></div>
-        <div className="pdf-info-copy"><span>!</span><p><strong>Document limitations</strong><br />Interactive forms, attachments, and cross-page navigation may not be retained.</p></div>
+        <div className="pdf-info-copy"><span>!</span><p><strong>Fidelity and compression</strong><br />Interactive forms, attachments, and cross-page navigation may not be retained. Compression is lossless and does not recompress images.</p></div>
       </aside>
     </div>
 
     <section className="queue-section pdf-result-section">
-      <div className="queue-heading"><div><div className="queue-overline">YOUR WORKSPACE <span>·</span> LOCAL</div><h2>Extraction result</h2></div><div className="queue-summary">{isProcessing ? <><span className="pulse-dot" />Working in background</> : isCompleted ? "Ready to download" : activeJob?.status === "cancelled" ? "Cancelled" : "PDF page extraction"}</div></div>
+      <div className="queue-heading"><div><div className="queue-overline">YOUR WORKSPACE <span>·</span> LOCAL</div><h2>PDF result</h2></div><div className="queue-summary">{isProcessing ? <><span className="pulse-dot" />Working in background</> : isCompleted ? "Ready to download" : activeJob?.status === "cancelled" ? "Cancelled" : "PDF processing"}</div></div>
       {result ? <div className="queue-item">
         <div className="queue-row">
           <div className="queue-file-icon">▤</div>
@@ -362,7 +406,7 @@ function PdfWorkspace({
           <button className="download-button" onClick={download}>Download <span>↓</span></button>
         </div>
         {result.warnings.map((warning) => <p className="pdf-warning" key={warning}>{warning}</p>)}
-      </div> : isProcessing ? <div className="queue-empty pdf-progress"><span className="pulse-dot" /><div><strong>Extracting pages in a background worker</strong><p>Large PDFs may take a little while. You can cancel at any time.</p></div><span className="progress-track indeterminate"><span /></span></div> : activeJob?.status === "failed" ? <div className="queue-empty"><div><strong>PDF extraction failed</strong><p>{error}</p></div></div> : <div className="queue-empty"><div className="empty-stack"><span>▤</span><i>✓</i></div><div><strong>{activeJob?.status === "cancelled" ? "Extraction cancelled" : "No PDF processed yet"}</strong><p>Select a PDF and choose the page numbers to extract.</p></div><span className="empty-queue-label">READY WHEN YOU ARE</span></div>}
+      </div> : isProcessing ? <div className="queue-empty pdf-progress"><span className="pulse-dot" /><div><strong>Processing in a background worker</strong><p>Large PDFs may take a little while. You can cancel at any time.</p></div><span className="progress-track indeterminate"><span /></span></div> : activeJob?.status === "failed" ? <div className="queue-empty"><div><strong>PDF processing failed</strong><p>{error}</p></div></div> : <div className="queue-empty"><div className="empty-stack"><span>▤</span><i>✓</i></div><div><strong>{activeJob?.status === "cancelled" ? "Processing cancelled" : "No PDF processed yet"}</strong><p>Select a PDF and choose an operation.</p></div><span className="empty-queue-label">READY WHEN YOU ARE</span></div>}
     </section>
   </>;
 }

@@ -1,6 +1,6 @@
 # Architecture
 
-GSFT is a pnpm monorepo with a shared React web renderer and an Electron shell. The web build is also loaded by Electron, while browser APIs remain the execution boundary for the current image operation.
+GSFT is a pnpm monorepo with a shared React web renderer and an Electron shell. The web build is also loaded by Electron, while browser APIs remain the execution boundary for current image and PDF operations.
 
 ## Packages
 
@@ -13,11 +13,11 @@ GSFT is a pnpm monorepo with a shared React web renderer and an Electron shell. 
 
 ## Current processing flow
 
-The image UI adds selected files and an immutable options snapshot to `JobManager`. The manager limits concurrency, creates a typed `image.resize` request, and supplies an `AbortSignal` through the processing context. The PDF workspace submits a typed `pdf.extract-pages` request to the same queue. `ProcessingRouter` selects a processor by category, operation, requested location, input format, and detected capability. Browser processors pass requests to dedicated workers; cancellation terminates the worker. The image worker resizes and encodes a Blob. The PDF worker validates the PDF signature/size, parses and validates the selected page ranges against the document page count, copies pages in requested order into a distinct PDF, and returns the output size/page counts/duration/location/warnings. The router checks request identity and output integrity before the renderer exposes a download.
+The image UI adds selected files and an immutable options snapshot to `JobManager`. The manager limits concurrency, creates a typed `image.resize` request, and supplies an `AbortSignal` through the processing context. The PDF workspace submits typed extraction, merge, or compression requests to the same queue. `ProcessingRouter` selects a processor by category, operation, requested location, input format, and detected capability. Browser processors pass requests to dedicated workers; cancellation terminates the worker. The image worker resizes and encodes a Blob. The PDF worker validates PDF signatures, file and page limits, parses page ranges for extraction, copies pages in order for extraction/merge, or reserializes the PDF with object streams for lossless structural optimization. It returns output size/page counts/duration/location/warnings. PDF compression does not recompress embedded images and is not guaranteed to reduce file size. The router checks request identity and output integrity before the renderer exposes a download.
 
 Image capability detection checks for Web Workers, `createImageBitmap`, `OffscreenCanvas`, and `OffscreenCanvas.convertToBlob`. PDF capability detection independently checks for Web Workers (the `pdf-lib` library is bundled with its worker). Unsupported browser environments expose an unavailable capability and a reason; the UI disables the affected operation rather than silently falling back to main-thread work.
 
-The Canvas-based pipeline strips metadata. JPEG uses a white background; PNG and WebP retain alpha. Animated GIF is rejected to avoid dropping frames. Browser support for decoding AVIF and TIFF varies. The image worker reports no fabricated percentage because browser encoding does not provide reliable progress. PDF extraction writes a new PDF and preserves the selected pages' page content; interactive forms, document-level attachments, and cross-page navigation may not survive copying.
+The Canvas-based pipeline strips metadata. JPEG uses a white background; PNG and WebP retain alpha. Animated GIF is rejected to avoid dropping frames. Browser support for decoding AVIF and TIFF varies. The image worker reports no fabricated percentage because browser encoding does not provide reliable progress. PDF extraction and merging write new PDFs and preserve copied page content; interactive forms, document-level attachments, and cross-page navigation may not survive copying. Merge supports up to 50 PDFs and 250 MB total; PDF inputs are limited to 20,000 pages each and merged output to 20,000 pages.
 
 ## Desktop security boundary
 

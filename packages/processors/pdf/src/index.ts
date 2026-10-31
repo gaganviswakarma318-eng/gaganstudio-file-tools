@@ -1,17 +1,17 @@
 import { detectPdfProcessingCapability } from "@gsft/core";
 import type {
   FileProcessor,
-  PdfExtractPagesRequest,
+  PdfProcessingRequest,
   ProcessingContext,
   ProcessingResult,
 } from "@gsft/shared";
 import type { PdfWorkerResponse } from "./pdf.worker";
 
-export function createBrowserPdfProcessor(): FileProcessor<PdfExtractPagesRequest> {
+export function createBrowserPdfProcessor(): FileProcessor<PdfProcessingRequest> {
   const capability = detectPdfProcessingCapability();
   return {
     capability,
-    process(request: PdfExtractPagesRequest, context: ProcessingContext) {
+    process(request: PdfProcessingRequest, context: ProcessingContext) {
       return new Promise<ProcessingResult>((resolve, reject) => {
         if (context.signal.aborted) {
           reject(new DOMException("Cancelled", "AbortError"));
@@ -36,6 +36,13 @@ export function createBrowserPdfProcessor(): FileProcessor<PdfExtractPagesReques
           finish(() => reject(new DOMException("Cancelled", "AbortError")));
 
         context.signal.addEventListener("abort", onAbort, { once: true });
+        worker.onerror = (event) => {
+          finish(() =>
+            reject(new Error(event.message || "Background PDF processing failed.")),
+          );
+        };
+
+        context.reportProgress({ stage: "reading-pages", percentage: null });
         worker.onmessage = (event: MessageEvent<PdfWorkerResponse>) => {
           const response = event.data;
           if (response.requestId !== request.id) {
@@ -48,13 +55,6 @@ export function createBrowserPdfProcessor(): FileProcessor<PdfExtractPagesReques
           }
           finish(() => resolve(response));
         };
-        worker.onerror = (event) => {
-          finish(() =>
-            reject(new Error(event.message || "Background PDF processing failed.")),
-          );
-        };
-
-        context.reportProgress({ stage: "reading-pages", percentage: null });
         try {
           worker.postMessage(request);
         } catch (error) {
