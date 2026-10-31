@@ -14,9 +14,9 @@ describe("detectProcessingCapabilities", () => {
     });
 
     expect(capability).toMatchObject({
-      id: "browser.image.resize",
+      id: "browser.image",
       category: "image",
-      operations: ["image.resize"],
+      operations: ["image.resize", "image.compress"],
       location: "browser",
       available: true,
     });

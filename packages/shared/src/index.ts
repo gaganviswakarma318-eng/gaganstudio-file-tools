@@ -19,10 +19,16 @@ export interface ResizeOptions {
   preventEnlargement: boolean;
 }
 
+export interface ImageCompressOptions {
+  format: "jpeg" | "webp";
+  quality: number;
+}
+
 export type FileCategory = "image" | "pdf" | "document" | "video" | "audio" | "archive";
 export type ProcessingLocation = "browser" | "desktop" | "remote";
 export type ProcessingOperation =
   | "image.resize"
+  | "image.compress"
   | "pdf.extract-pages"
   | "pdf.merge"
   | "pdf.compress"
@@ -45,6 +51,17 @@ export interface ImageResizeRequest {
   options: ResizeOptions;
   requestedLocation?: ProcessingLocation;
 }
+
+export interface ImageCompressRequest {
+  id: string;
+  category: "image";
+  operation: "image.compress";
+  input: ProcessingInput;
+  options: ImageCompressOptions;
+  requestedLocation?: ProcessingLocation;
+}
+
+export type ImageProcessingRequest = ImageResizeRequest | ImageCompressRequest;
 
 export interface PdfExtractPagesRequest {
   id: string;
@@ -119,7 +136,7 @@ export type PdfProcessingRequest =
   | PdfReorderPagesRequest
   | PdfSplitRequest;
 
-export type ProcessingRequest = ImageResizeRequest | PdfProcessingRequest;
+export type ProcessingRequest = ImageProcessingRequest | PdfProcessingRequest;
 
 export interface ProcessingProgress {
   stage: ProcessingStage | "reading-pages" | "writing-pdf";
@@ -189,7 +206,7 @@ export interface ProcessingJob {
   status: JobStatus;
   progress: number | null;
   createdAt: number;
-  options?: ResizeOptions;
+  options?: ResizeOptions | ImageCompressOptions;
   result?: ProcessingResult;
   output?: Blob;
   outputName?: string;

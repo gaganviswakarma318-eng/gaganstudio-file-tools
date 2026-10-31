@@ -1,14 +1,14 @@
 import { detectProcessingCapabilities } from "@gsft/core";
 import type {
   FileProcessor,
-  ImageResizeRequest,
+  ImageProcessingRequest,
   ProcessingContext,
   ProcessingResult,
 } from "@gsft/shared";
 
 type WorkerResponse = ProcessingResult | { requestId: string; error: string };
 
-export function createBrowserImageProcessor(): FileProcessor<ImageResizeRequest> {
+export function createBrowserImageProcessor(): FileProcessor<ImageProcessingRequest> {
   const capability = detectProcessingCapabilities()[0];
   if (!capability) {
     throw new Error("Browser image resize capability detection returned no result.");
@@ -16,7 +16,7 @@ export function createBrowserImageProcessor(): FileProcessor<ImageResizeRequest>
 
   return {
     capability,
-    process(request: ImageResizeRequest, context: ProcessingContext) {
+    process(request: ImageProcessingRequest, context: ProcessingContext) {
       return new Promise<ProcessingResult>((resolve, reject) => {
         if (context.signal.aborted) {
           reject(new DOMException("Cancelled", "AbortError"));

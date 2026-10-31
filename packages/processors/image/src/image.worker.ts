@@ -1,9 +1,9 @@
 import { detectImageFile, validateImageDimensions, validateImageFile } from "@gsft/core";
-import type { ImageResizeRequest, ProcessingResult } from "@gsft/shared";
+import type { ImageProcessingRequest, ProcessingResult } from "@gsft/shared";
 
 const MIME_TYPES = { jpeg: "image/jpeg", png: "image/png", webp: "image/webp" } as const;
 
-self.onmessage = async (event: MessageEvent<ImageResizeRequest>) => {
+self.onmessage = async (event: MessageEvent<ImageProcessingRequest>) => {
   const request = event.data;
   const { input, options } = request;
   let source: ImageBitmap | undefined;
@@ -14,31 +14,33 @@ self.onmessage = async (event: MessageEvent<ImageResizeRequest>) => {
     if (detected?.format === "gif") {
       throw new Error("GIF resizing is unavailable because exporting would remove animation.");
     }
-    validateImageDimensions(options.width, options.height);
     if (!Number.isFinite(options.quality) || options.quality < 1 || options.quality > 100) {
       throw new Error("Quality must be between 1 and 100.");
     }
 
     source = await createImageBitmap(input.data);
     validateImageDimensions(source.width, source.height);
-    let width = options.width;
-    let height = options.height;
-    if (options.fit === "inside") {
-      const ratio = Math.min(options.width / source.width, options.height / source.height,
-        options.preventEnlargement ? 1 : Number.POSITIVE_INFINITY);
+    const resizeOptions =
+      request.operation === "image.resize" ? request.options : undefined;
+    if (resizeOptions) validateImageDimensions(resizeOptions.width, resizeOptions.height);
+    let width = source.width;
+    let height = source.height;
+    if (resizeOptions?.fit === "inside") {
+      const ratio = Math.min(resizeOptions.width / source.width, resizeOptions.height / source.height,
+        resizeOptions.preventEnlargement ? 1 : Number.POSITIVE_INFINITY);
       width = Math.max(1, Math.round(source.width * ratio));
       height = Math.max(1, Math.round(source.height * ratio));
-    } else if (options.preventEnlargement && options.fit === "cover") {
-      const targetRatio = options.width / options.height;
+    } else if (resizeOptions?.preventEnlargement && resizeOptions.fit === "cover") {
+      const targetRatio = resizeOptions.width / resizeOptions.height;
       const sourceRatio = source.width / source.height;
       const cropWidth = sourceRatio > targetRatio ? source.height * targetRatio : source.width;
       const cropHeight = sourceRatio > targetRatio ? source.height : source.width / targetRatio;
-      const scale = Math.min(1, cropWidth / options.width, cropHeight / options.height);
-      width = Math.max(1, Math.round(options.width * scale));
-      height = Math.max(1, Math.round(options.height * scale));
-    } else if (options.preventEnlargement) {
-      width = Math.min(options.width, source.width);
-      height = Math.min(options.height, source.height);
+      const scale = Math.min(1, cropWidth / resizeOptions.width, cropHeight / resizeOptions.height);
+      width = Math.max(1, Math.round(resizeOptions.width * scale));
+      height = Math.max(1, Math.round(resizeOptions.height * scale));
+    } else if (resizeOptions?.preventEnlargement) {
+      width = Math.min(resizeOptions.width, source.width);
+      height = Math.min(resizeOptions.height, source.height);
     }
     validateImageDimensions(width, height);
 
@@ -49,7 +51,7 @@ self.onmessage = async (event: MessageEvent<ImageResizeRequest>) => {
       context.fillStyle = "#ffffff";
       context.fillRect(0, 0, width, height);
     }
-    if (options.fit === "cover") {
+    if (resizeOptions?.fit === "cover") {
       const sourceRatio = source.width / source.height;
       const targetRatio = width / height;
       const cropWidth = sourceRatio > targetRatio ? source.height * targetRatio : source.width;
@@ -72,7 +74,7 @@ self.onmessage = async (event: MessageEvent<ImageResizeRequest>) => {
       location: "browser",
       output: {
         data: output,
-        name: `${input.name.replace(/\.[^.]+$/, "") || "image"}-resized.${options.format === "jpeg" ? "jpg" : options.format}`,
+        name: `${input.name.replace(/\.[^.]+$/, "") || "image"}-${resizeOptions ? "resized" : "compressed"}.${options.format === "jpeg" ? "jpg" : options.format}`,
         mimeType: MIME_TYPES[options.format],
       },
       metadata: {
@@ -87,7 +89,10 @@ self.onmessage = async (event: MessageEvent<ImageResizeRequest>) => {
         outputBytes: output.size,
         durationMs: Math.max(0, Math.round(performance.now() - startedAt)),
       },
-      warnings: [],
+      warnings:
+        request.operation === "image.compress" && output.size >= input.data.size
+          ? ["The compressed output is not smaller than the original. Try a lower quality or another format."]
+          : [],
     };
     self.postMessage(result);
   } catch (error) {

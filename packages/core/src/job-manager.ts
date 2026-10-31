@@ -57,7 +57,7 @@ export class JobManager {
       status: "queued",
       progress: null,
       createdAt: Date.now(),
-      ...(request.operation === "image.resize" ? { options: request.options } : {}),
+      ...(request.category === "image" ? { options: request.options } : {}),
     });
     this.pending.push(request.id);
     this.emit();

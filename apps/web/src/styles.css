@@ -244,6 +244,7 @@ h1, h2, h3, p { margin-top: 0; }
 .terminal-status { color: var(--muted); font-size: 9px; }
 .terminal-status.failed { color: #b9534b; }
 .job-error { position: absolute; right: 15px; bottom: 1px; color: #ae5348; font-size: 8px; }
+.job-warning { width: 100%; padding: 4px 15px; color: var(--muted); font-size: 9px; line-height: 1.5; }
 .app-footer { display: flex; align-items: center; justify-content: space-between; margin-top: 30px; padding-top: 13px; border-top: 1px solid var(--line); color: #9aa2a3; font-size: 7px; font-weight: 650; letter-spacing: 1px; }
 .app-footer span span { padding: 0 4px; }
 .app-footer > span:last-child i { padding-left: 4px; color: var(--accent); font-size: 11px; font-style: normal; }

@@ -1,12 +1,16 @@
 import { expect, test } from "@playwright/test";
 
-async function createPngFixture(page: import("@playwright/test").Page): Promise<Buffer> {
+async function createPngFixture(
+  page: import("@playwright/test").Page,
+  width = 48,
+  height = 32,
+): Promise<Buffer> {
   const bytes = await page.evaluate(
-    () =>
+    ({ width, height }) =>
       new Promise<number[]>((resolve, reject) => {
         const canvas = document.createElement("canvas");
-        canvas.width = 48;
-        canvas.height = 32;
+        canvas.width = width;
+        canvas.height = height;
         const context = canvas.getContext("2d");
         if (!context) {
           reject(new Error("Canvas is unavailable in the test browser."));
@@ -14,9 +18,9 @@ async function createPngFixture(page: import("@playwright/test").Page): Promise<
         }
 
         context.fillStyle = "#cb5438";
-        context.fillRect(0, 0, 24, 32);
+        context.fillRect(0, 0, width / 2, height);
         context.fillStyle = "#327c68";
-        context.fillRect(24, 0, 24, 32);
+        context.fillRect(width / 2, 0, width / 2, height);
         canvas.toBlob(async (blob) => {
           if (!blob) {
             reject(new Error("Could not create the PNG test fixture."));
@@ -25,6 +29,7 @@ async function createPngFixture(page: import("@playwright/test").Page): Promise<
           resolve(Array.from(new Uint8Array(await blob.arrayBuffer())));
         }, "image/png");
       }),
+    { width, height },
   );
   return Buffer.from(bytes);
 }
@@ -84,6 +89,49 @@ test("reports invalid image contents instead of presenting a successful result",
     "does not appear to be a supported image",
   );
   await expect(page.getByRole("button", { name: "Download" })).toHaveCount(0);
+});
+
+test("compresses an image in a worker while preserving its pixel dimensions", async ({ page }) => {
+  const fixture = await createPngFixture(page, 512, 512);
+  await page.getByRole("button", { name: /Image compressor/ }).click();
+  await page.locator('input[type="file"]').setInputFiles({
+    name: "two-colors.png",
+    mimeType: "image/png",
+    buffer: fixture,
+  });
+  await expect(page.getByRole("heading", { name: "Compression settings" })).toBeVisible();
+  await page.getByRole("slider", { name: "Output quality" }).fill("75");
+  await page.getByRole("button", { name: "Compress 1 image" }).click();
+
+  const comparison = page.getByRole("region", { name: "Before and after comparison" });
+  await expect(comparison).toBeVisible();
+  await expect(comparison).toContainText("512 × 512");
+  await expect(comparison.getByRole("img", { name: "Compressed image preview" })).toHaveJSProperty(
+    "naturalWidth",
+    512,
+  );
+  await expect(comparison).toContainText("512 × 512 ·");
+  await expect(page.locator(".queue-file")).toContainText("% smaller");
+
+  const downloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Download" }).click();
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toBe("two-colors-compressed.webp");
+});
+
+test("warns when compression would increase a small image's file size", async ({ page }) => {
+  const fixture = await createPngFixture(page);
+  await page.getByRole("button", { name: /Image compressor/ }).click();
+  await page.locator('input[type="file"]').setInputFiles({
+    name: "tiny.png",
+    mimeType: "image/png",
+    buffer: fixture,
+  });
+  await page.getByRole("button", { name: "Compress 1 image" }).click();
+
+  await expect(page.getByRole("status")).toContainText(
+    "compressed output is not smaller than the original",
+  );
 });
 
 test("explains and disables image processing when worker support is missing", async ({ page }) => {

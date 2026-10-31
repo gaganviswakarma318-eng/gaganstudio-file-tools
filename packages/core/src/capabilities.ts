@@ -34,9 +34,9 @@ export function detectProcessingCapabilities(
 
   return [
     {
-      id: "browser.image.resize",
+      id: "browser.image",
       category: "image",
-      operations: ["image.resize"],
+      operations: ["image.resize", "image.compress"],
       location: "browser",
       inputFormats: ["JPEG", "PNG", "WebP"],
       outputFormats: ["JPEG", "PNG", "WebP"],
