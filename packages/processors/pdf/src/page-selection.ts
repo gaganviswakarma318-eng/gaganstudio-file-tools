@@ -1,4 +1,8 @@
-export function parsePageSelection(selection: string, pageCount: number): number[] {
+export function parsePageSelection(
+  selection: string,
+  pageCount: number,
+  maxSelectedPages = 2000,
+): number[] {
   if (!Number.isSafeInteger(pageCount) || pageCount < 1) {
     throw new Error("The PDF does not contain any pages.");
   }
@@ -28,8 +32,8 @@ export function parsePageSelection(selection: string, pageCount: number): number
     if (last < first) {
       throw new Error(`Page range "${segment}" must be in ascending order.`);
     }
-    if (last - first + 1 + selected.length > 2000) {
-      throw new Error("Select no more than 2,000 pages at a time.");
+    if (last - first + 1 + selected.length > maxSelectedPages) {
+      throw new Error(`Select no more than ${maxSelectedPages.toLocaleString()} pages at a time.`);
     }
 
     for (let page = first; page <= last; page += 1) {

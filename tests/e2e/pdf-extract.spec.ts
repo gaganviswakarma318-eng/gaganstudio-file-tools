@@ -138,6 +138,24 @@ test("rotates selected pages locally and offers a new PDF", async ({ page }) => 
   await expect(page.locator(".pdf-warning")).toContainText("display orientation");
 });
 
+test("reorders all PDF pages and rejects incomplete page orders", async ({ page }) => {
+  await page.getByLabel("PDF operation").selectOption("pdf.reorder-pages");
+  await page.locator('input[aria-label="Choose a PDF"]').setInputFiles({
+    name: "three-pages.pdf",
+    mimeType: "application/pdf",
+    buffer: createPdfFixture(3),
+  });
+  await page.getByRole("textbox", { name: "New page order" }).fill("3, 1, 2");
+  await page.getByRole("button", { name: "Reorder pages" }).click();
+
+  await expect(page.locator(".queue-file strong")).toHaveText("three-pages-reordered.pdf");
+  await expect(page.getByText(/3 pages ·/)).toBeVisible();
+
+  await page.getByRole("textbox", { name: "New page order" }).fill("2, 1");
+  await page.getByRole("button", { name: "Reorder pages" }).click();
+  await expect(page.locator(".notice")).toContainText("Include every page exactly once");
+});
+
 test("explains and disables PDF extraction when worker support is missing", async ({ page }) => {
   await page.addInitScript(() => {
     Object.defineProperty(globalThis, "Worker", { value: undefined, configurable: true });

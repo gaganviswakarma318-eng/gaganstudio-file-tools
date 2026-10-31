@@ -60,6 +60,7 @@ export function detectPdfProcessingCapability(
       "pdf.merge",
       "pdf.compress",
       "pdf.rotate-pages",
+      "pdf.reorder-pages",
     ],
     location: "browser",
     inputFormats: ["PDF"],

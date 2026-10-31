@@ -4,6 +4,7 @@ import type {
   PdfCompressRequest,
   PdfExtractPagesRequest,
   PdfMergeRequest,
+  PdfReorderPagesRequest,
   PdfRotatePagesRequest,
 } from "@gsft/shared";
 import { processPdf } from "./pdf-processing";
@@ -59,6 +60,44 @@ describe("processPdf", () => {
     await expect(
       processPdf(request(input, "4"), performance.now()),
     ).rejects.toThrow("between 1 and 3");
+  });
+
+  it("reorders every page exactly as requested", async () => {
+    const input = new Blob([Uint8Array.from(await createPdf())], { type: "application/pdf" });
+    const reorderRequest: PdfReorderPagesRequest = {
+      id: "reorder-test",
+      category: "pdf",
+      operation: "pdf.reorder-pages",
+      input: { name: "source.pdf", mimeType: "application/pdf", data: input },
+      options: { pageOrder: "3, 1, 2" },
+    };
+
+    const result = await processPdf(reorderRequest, performance.now());
+    const output = await PDFDocument.load(await result.output.data.arrayBuffer());
+
+    expect(output.getPageCount()).toBe(3);
+    expect(output.getPages().map((page) => page.getSize())).toEqual([
+      { width: 300, height: 400 },
+      { width: 100, height: 200 },
+      { width: 200, height: 300 },
+    ]);
+    expect(result.output.name).toBe("source-reordered.pdf");
+    expect(result.metadata.pageCount).toBe(3);
+  });
+
+  it("rejects incomplete page orders instead of silently dropping pages", async () => {
+    const input = new Blob([Uint8Array.from(await createPdf())], { type: "application/pdf" });
+    const reorderRequest: PdfReorderPagesRequest = {
+      id: "reorder-incomplete",
+      category: "pdf",
+      operation: "pdf.reorder-pages",
+      input: { name: "source.pdf", mimeType: "application/pdf", data: input },
+      options: { pageOrder: "3, 1" },
+    };
+
+    await expect(processPdf(reorderRequest, performance.now())).rejects.toThrow(
+      "Include every page exactly once",
+    );
   });
 
   it("merges PDFs in input order and reports combined input size", async () => {

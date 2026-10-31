@@ -174,6 +174,36 @@ export async function processPdf(
     return result;
   }
 
+  if (request.operation === "pdf.reorder-pages") {
+    const pageOrder = parsePageSelection(
+      request.options.pageOrder,
+      sourcePageCount,
+      MAX_PDF_PAGES,
+    );
+    if (pageOrder.length !== sourcePageCount) {
+      throw new Error(
+        `Include every page exactly once to reorder this PDF (${sourcePageCount} pages).`,
+      );
+    }
+
+    const outputDocument = await PDFDocument.create();
+    const reorderedPages = await outputDocument.copyPages(
+      source,
+      pageOrder.map((page) => page - 1),
+    );
+    for (const page of reorderedPages) outputDocument.addPage(page);
+
+    return createResult(
+      request,
+      outputDocument,
+      startedAt,
+      request.input.data.size,
+      "reordered",
+      [PDF_MERGE_WARNING],
+      sourcePageCount,
+    );
+  }
+
   const output = await createResult(
     request,
     source,

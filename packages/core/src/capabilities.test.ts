@@ -45,6 +45,7 @@ describe("detectProcessingCapabilities", () => {
         "pdf.merge",
         "pdf.compress",
         "pdf.rotate-pages",
+        "pdf.reorder-pages",
       ],
       location: "browser",
       available: true,

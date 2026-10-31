@@ -26,7 +26,8 @@ export type ProcessingOperation =
   | "pdf.extract-pages"
   | "pdf.merge"
   | "pdf.compress"
-  | "pdf.rotate-pages";
+  | "pdf.rotate-pages"
+  | "pdf.reorder-pages";
 export type ProcessingStage = "validating" | "decoding" | "processing" | "encoding";
 
 export interface ProcessingInput {
@@ -87,11 +88,23 @@ export interface PdfRotatePagesRequest {
   requestedLocation?: ProcessingLocation;
 }
 
+export interface PdfReorderPagesRequest {
+  id: string;
+  category: "pdf";
+  operation: "pdf.reorder-pages";
+  input: ProcessingInput;
+  options: {
+    pageOrder: string;
+  };
+  requestedLocation?: ProcessingLocation;
+}
+
 export type PdfProcessingRequest =
   | PdfExtractPagesRequest
   | PdfMergeRequest
   | PdfCompressRequest
-  | PdfRotatePagesRequest;
+  | PdfRotatePagesRequest
+  | PdfReorderPagesRequest;
 
 export type ProcessingRequest = ImageResizeRequest | PdfProcessingRequest;
 
