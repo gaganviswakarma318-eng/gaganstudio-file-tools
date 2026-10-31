@@ -20,9 +20,11 @@ Browser-local PDF tools and local image resizing, compression, and format conver
 - Local PDF splitting into configurable contiguous page groups, bundled as a ZIP with generated per-range PDF names.
 - Lossless structural PDF optimization using object streams; it does not recompress embedded images and does not guarantee a smaller file.
 - Separate PDF workspace with local-only messaging, operation selection, cancel control, result details, and download; PDF jobs use the shared cancellable queue and source files are never overwritten.
-- Browser image resizing for PNG, JPEG, and WebP with inside, cover/crop, fill, quality, and prevent-enlargement settings.
+- Browser image resizing for PNG, JPEG, WebP, and GIF with inside, cover/crop, fill, quality, and prevent-enlargement settings.
 - Independent image compression through quality-controlled JPEG or WebP encoding; source pixel dimensions are preserved and processing remains in the image worker and shared queue.
-- Image format conversion between PNG, JPEG, and WebP while preserving source pixel dimensions, using the same cancellable local worker queue.
+- Image format conversion between PNG, JPEG, WebP, and GIF while preserving source pixel dimensions, using the same cancellable local worker queue.
+- Animated GIF resize and GIF-to-GIF conversion preserve frame count, delays, loop count, transparency, and disposal behavior; animated-to-still export is rejected.
+- GIF decoding and output are bounded by 300 frames, 20 million source-canvas pixels, 50 million decoded frame-patch pixels, 100 million output frame pixels, and 250 MB of generated output.
 - Dedicated module Web Worker using `createImageBitmap` and `OffscreenCanvas`; the UI thread remains available during decode, draw, and encode.
 - Queue results show source/output dimensions and byte sizes, with a savings percentage when output is smaller.
 - Completed jobs include managed before/after image previews with dimensions and file sizes.
@@ -37,7 +39,7 @@ Browser-local PDF tools and local image resizing, compression, and format conver
 ## In progress / not implemented
 
 - Production desktop packaging and native open/save dialogs; Electron Builder packaging was attempted but its network fetch was denied in this environment.
-- Persistent history, queue retry/pause controls, animated-image processing, and metadata controls.
+- Persistent history, queue retry/pause controls, and image metadata controls.
 - Additional PDF operations; document, video, audio, archive, and remote processing.
 - Explicit remote-processing consent flow and remote processor.
 
@@ -45,9 +47,10 @@ Browser-local PDF tools and local image resizing, compression, and format conver
 
 - Worker processing requires `Worker`, `createImageBitmap`, and `OffscreenCanvas`; unsupported browsers receive a clear error, with no main-thread fallback.
 - A highly compressed image with excessive decoded pixel dimensions can consume memory during decode before its dimensions can be checked.
-- Animated GIF is rejected because a single-frame canvas export would discard animation.
+- GIF color is quantized to up to 256 colors per frame; this can shift colors or introduce banding. GIF output is not guaranteed to be smaller.
+- Animated GIF inputs must be exported as GIF; still-format export is blocked rather than silently dropping frames.
 - AVIF/TIFF detection is informational; decoding depends on the browser.
-- Canvas exports strip metadata. JPEG output uses a white background; PNG/WebP retain alpha.
+- Image exports strip metadata. JPEG output uses a white background; PNG/WebP/GIF retain alpha.
 - Image compression changes encoding to JPEG or WebP and can be lossy; it preserves pixel dimensions but may not reduce every source file's size.
 - Image conversion to JPEG/WebP can be lossy and JPEG conversion flattens transparency against white; all conversions strip metadata.
 - PDF page extraction may not preserve interactive forms, document-level attachments, or cross-page navigation.
@@ -63,10 +66,10 @@ Browser-local PDF tools and local image resizing, compression, and format conver
 - `corepack pnpm typecheck` — passed across all workspaces.
 - `corepack pnpm test` — passed (39 tests), including PDF execution through the shared queue and extraction, splitting, merge, optimization, rotation, and page-order validation coverage.
 - `corepack pnpm build:web` — passed; Vite emits separate image and PDF worker assets. The PDF library remains in its worker bundle.
-- `corepack pnpm test:e2e` — passed (14 Chromium tests for image resizing, compression and format conversion, PDF operations, invalid inputs, downloads, and unavailable capabilities).
+- `corepack pnpm test:e2e` — passed (20 Chromium tests for image operations including animated GIF frame/timing/loop retention, transparency/disposal, still-format rejection, safety limits, PDF operations, invalid inputs, downloads, and unavailable capabilities).
 - `corepack pnpm build:desktop` — web build passed, but Electron Builder could not finish because its platform-resource download failed with network `EACCES`.
 - Electron development runtime — launched successfully after adding PDF processing; the application window displayed "GaganStudio File Tools".
 
 ## Next milestone
 
-Review animated-image processing tradeoffs and introduce support only when animation can be preserved end to end.
+Add user-controlled image metadata handling with clear privacy defaults and format-specific preservation behavior.

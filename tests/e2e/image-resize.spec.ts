@@ -1,4 +1,13 @@
 import { expect, test } from "@playwright/test";
+import {
+  ANIMATED_GIF_DELAYS,
+  ANIMATED_GIF_LOOP_COUNT,
+  createAnimatedGifFixture,
+  createDisposalGifFixture,
+  inspectGifPixel,
+  inspectAnimatedGif,
+} from "../../packages/processors/image/test-utils/animated-gif";
+import { readFile } from "node:fs/promises";
 
 async function createPngFixture(
   page: import("@playwright/test").Page,
@@ -158,6 +167,121 @@ test("converts an image format in a worker while keeping its dimensions", async 
   await page.getByRole("button", { name: "Download" }).click();
   const download = await downloadPromise;
   expect(download.suggestedFilename()).toBe("two-colors-converted.jpg");
+});
+
+test("resizes animated GIFs without dropping frames, delays, or loop count", async ({ page }) => {
+  await page.locator('input[type="file"]').setInputFiles({
+    name: "animated.gif",
+    mimeType: "image/gif",
+    buffer: Buffer.from(createAnimatedGifFixture()),
+  });
+  await page.getByLabel("Output format").selectOption("gif");
+  await page.getByRole("spinbutton", { name: /WIDTH/ }).fill("12");
+  await page.getByRole("spinbutton", { name: /HEIGHT/ }).fill("8");
+  await page.getByRole("button", { name: "Resize 1 image" }).click();
+
+  await expect(page.locator(".queue-file")).toContainText("2 frames");
+  const downloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Download" }).click();
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toBe("animated-resized.gif");
+  const outputPath = await download.path();
+  if (!outputPath) throw new Error("The browser did not save the GIF download.");
+  const output = inspectAnimatedGif(new Uint8Array(await readFile(outputPath)));
+  expect(output.width).toBe(12);
+  expect(output.height).toBe(8);
+  expect(output.loopCount).toBe(ANIMATED_GIF_LOOP_COUNT);
+  expect(output.frames.map((frame) => frame.delay)).toEqual([...ANIMATED_GIF_DELAYS]);
+  expect(output.frames[0]?.firstPixel[0]).toBeGreaterThan(200);
+  expect(output.frames[1]?.firstPixel[1]).toBeGreaterThan(200);
+});
+
+test("blocks exporting an animated GIF as a still format", async ({ page }) => {
+  await page.getByRole("button", { name: /Format converter/ }).click();
+  await page.locator('input[type="file"]').setInputFiles({
+    name: "animated.gif",
+    mimeType: "image/gif",
+    buffer: Buffer.from(createAnimatedGifFixture()),
+  });
+  await page.getByLabel("Output format").selectOption("jpeg");
+  await page.getByRole("button", { name: "Convert 1 image" }).click();
+
+  await expect(page.locator(".job-error")).toContainText(
+    "must be exported as GIF to preserve their animation",
+  );
+  await expect(page.getByRole("button", { name: "Download" })).toHaveCount(0);
+});
+
+test("preserves GIF transparency and disposal-to-background behavior", async ({ page }) => {
+  await page.locator('input[type="file"]').setInputFiles({
+    name: "disposal-two.gif",
+    mimeType: "image/gif",
+    buffer: Buffer.from(createDisposalGifFixture(2)),
+  });
+  await page.getByLabel("Output format").selectOption("gif");
+  await page.getByRole("button", { name: "Resize 1 image" }).click();
+  const downloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Download" }).click();
+  const download = await downloadPromise;
+  const outputPath = await download.path();
+  if (!outputPath) throw new Error("The browser did not save the GIF download.");
+  const output = new Uint8Array(await readFile(outputPath));
+  expect(inspectGifPixel(output, 2, 12, 8)[3]).toBe(0);
+  expect(inspectGifPixel(output, 2, 1, 1)[3]).toBe(255);
+});
+
+test("preserves GIF restore-to-previous disposal when compositing frames", async ({ page }) => {
+  await page.locator('input[type="file"]').setInputFiles({
+    name: "disposal-three.gif",
+    mimeType: "image/gif",
+    buffer: Buffer.from(createDisposalGifFixture(3)),
+  });
+  await page.getByLabel("Output format").selectOption("gif");
+  await page.getByRole("button", { name: "Resize 1 image" }).click();
+  const downloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Download" }).click();
+  const download = await downloadPromise;
+  const outputPath = await download.path();
+  if (!outputPath) throw new Error("The browser did not save the GIF download.");
+  const output = new Uint8Array(await readFile(outputPath));
+  const restoredBackgroundPixel = inspectGifPixel(output, 2, 12, 8);
+  expect(restoredBackgroundPixel[0]).toBeGreaterThan(200);
+  expect(restoredBackgroundPixel[1]).toBeLessThan(80);
+  expect(restoredBackgroundPixel[3]).toBe(255);
+  expect(inspectGifPixel(output, 2, 1, 1)[0]).toBeGreaterThan(200);
+});
+
+test("converts a static image to a single-frame GIF", async ({ page }) => {
+  await page.getByRole("button", { name: /Format converter/ }).click();
+  await page.locator('input[type="file"]').setInputFiles({
+    name: "still.png",
+    mimeType: "image/png",
+    buffer: await createPngFixture(page),
+  });
+  await page.getByLabel("Output format").selectOption("gif");
+  await page.getByRole("button", { name: "Convert 1 image" }).click();
+  const downloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Download" }).click();
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toBe("still-converted.gif");
+  const outputPath = await download.path();
+  if (!outputPath) throw new Error("The browser did not save the GIF download.");
+  const output = inspectAnimatedGif(new Uint8Array(await readFile(outputPath)));
+  expect(output.width).toBe(48);
+  expect(output.height).toBe(32);
+  expect(output.frames).toHaveLength(1);
+});
+
+test("rejects GIFs that exceed the animation frame safety limit", async ({ page }) => {
+  await page.locator('input[type="file"]').setInputFiles({
+    name: "many-frames.gif",
+    mimeType: "image/gif",
+    buffer: Buffer.from(createAnimatedGifFixture(301)),
+  });
+  await page.getByLabel("Output format").selectOption("gif");
+  await page.getByRole("button", { name: "Resize 1 image" }).click();
+
+  await expect(page.locator(".job-error")).toContainText("limited to 300 frames");
 });
 
 test("explains and disables image processing when worker support is missing", async ({ page }) => {

@@ -1,4 +1,4 @@
-export type ImageFormat = "png" | "jpeg" | "webp";
+export type ImageFormat = "png" | "jpeg" | "webp" | "gif";
 
 export type JobStatus =
   | "queued"
@@ -183,6 +183,8 @@ export interface ProcessingMetadata {
   rotatedPageCount?: number;
   rotationDegrees?: number;
   splitFileCount?: number;
+  frameCount?: number;
+  loopCount?: number;
 }
 
 export interface ProcessingStatistics {

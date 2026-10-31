@@ -1,7 +1,13 @@
 import { detectImageFile, validateImageDimensions, validateImageFile } from "@gsft/core";
 import type { ImageProcessingRequest, ProcessingResult } from "@gsft/shared";
+import { processGif } from "./gif-processing";
 
-const MIME_TYPES = { jpeg: "image/jpeg", png: "image/png", webp: "image/webp" } as const;
+const MIME_TYPES = {
+  jpeg: "image/jpeg",
+  png: "image/png",
+  webp: "image/webp",
+  gif: "image/gif",
+} as const;
 
 self.onmessage = async (event: MessageEvent<ImageProcessingRequest>) => {
   const request = event.data;
@@ -11,8 +17,16 @@ self.onmessage = async (event: MessageEvent<ImageProcessingRequest>) => {
   try {
     await validateImageFile(input.data);
     const detected = await detectImageFile(input.data);
-    if (detected?.format === "gif") {
-      throw new Error("Animated GIF processing is unavailable because exporting would remove animation.");
+    if (!detected) {
+      throw new Error("This file does not appear to be a supported image.");
+    }
+    if (detected.format === "gif" || options.format === "gif") {
+      if (request.operation === "image.compress") {
+        throw new Error("GIF output is not available for compression; use resize or conversion.");
+      }
+      const result = await processGif(request, input, startedAt, detected.format);
+      self.postMessage(result);
+      return;
     }
     if (!Number.isFinite(options.quality) || options.quality < 1 || options.quality > 100) {
       throw new Error("Quality must be between 1 and 100.");

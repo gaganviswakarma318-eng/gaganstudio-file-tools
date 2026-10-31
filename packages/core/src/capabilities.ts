@@ -38,8 +38,8 @@ export function detectProcessingCapabilities(
       category: "image",
       operations: ["image.resize", "image.compress", "image.convert"],
       location: "browser",
-      inputFormats: ["JPEG", "PNG", "WebP"],
-      outputFormats: ["JPEG", "PNG", "WebP"],
+      inputFormats: ["JPEG", "PNG", "WebP", "GIF"],
+      outputFormats: ["JPEG", "PNG", "WebP", "GIF"],
       requirements: requirements.map(({ label }) => label),
       available: missing.length === 0,
       ...(missing.length > 0

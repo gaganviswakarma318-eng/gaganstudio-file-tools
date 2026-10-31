@@ -18,6 +18,8 @@ describe("detectProcessingCapabilities", () => {
       category: "image",
       operations: ["image.resize", "image.compress", "image.convert"],
       location: "browser",
+      inputFormats: ["JPEG", "PNG", "WebP", "GIF"],
+      outputFormats: ["JPEG", "PNG", "WebP", "GIF"],
       available: true,
     });
     expect(capability?.unavailableReason).toBeUndefined();

@@ -30,10 +30,15 @@ const navItems = [
 const tools = [
   { icon: "↔", title: "Image resizer", detail: "Resize without leaving your device", mode: "resize" },
   { icon: "✦", title: "Image compressor", detail: "Reduce file size with quality control", mode: "compress" },
-  { icon: "⇄", title: "Format converter", detail: "JPG, PNG and WebP", mode: "convert" },
+  { icon: "⇄", title: "Format converter", detail: "JPG, PNG, WebP and GIF", mode: "convert" },
 ] as const;
 
-const formatLabels: Record<ImageFormat, string> = { png: "PNG", jpeg: "JPEG", webp: "WebP" };
+const formatLabels: Record<ImageFormat, string> = {
+  png: "PNG",
+  jpeg: "JPEG",
+  webp: "WebP",
+  gif: "GIF",
+};
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -104,7 +109,7 @@ function App() {
           category: "image",
           operation: "image.compress",
           input: { name: file.name, mimeType: file.type, data: file },
-          options: { format: format === "png" ? "webp" : format, quality },
+          options: { format: format === "jpeg" ? "jpeg" : "webp", quality },
           requestedLocation: "browser",
         };
         manager.enqueueRequest(request, file);
@@ -184,7 +189,7 @@ function App() {
         <div className="content">
           {activeTool === "image" ? <>
           <section className="page-heading">
-            <div><div className="eyebrow">YOUR CREATIVE WORKSPACE</div><h1>{imageMode === "resize" ? "Make images fit." : imageMode === "compress" ? "Make images lighter." : "Change image formats."}</h1><p>{imageMode === "resize" ? "Resize and fine-tune your images — privately, right on your device." : imageMode === "compress" ? "Reduce image file sizes while preserving pixel dimensions — privately, right on your device." : "Convert PNG, JPEG, and WebP files while preserving pixel dimensions."}</p></div>
+            <div><div className="eyebrow">YOUR CREATIVE WORKSPACE</div><h1>{imageMode === "resize" ? "Make images fit." : imageMode === "compress" ? "Make images lighter." : "Change image formats."}</h1><p>{imageMode === "resize" ? "Resize and fine-tune your images — privately, right on your device." : imageMode === "compress" ? "Reduce image file sizes while preserving pixel dimensions — privately, right on your device." : "Convert PNG, JPEG, WebP, or GIF files while preserving pixel dimensions."}</p></div>
             <span className="heading-stamp">01 <span>/ 07</span></span>
           </section>
 
@@ -217,10 +222,12 @@ function App() {
               <div className="setting-divider" />
               <div className="settings-bottom">
                 {imageMode === "resize" && <label className="select-field"><span className="field-label">FIT</span><select value={fit} onChange={(event) => setFit(event.target.value as ResizeFit)}><option value="inside">Fit inside</option><option value="cover">Cover & crop</option><option value="fill">Stretch to fill</option></select></label>}
-                <label className="select-field"><span className="field-label">OUTPUT FORMAT</span><select aria-label="Output format" value={imageMode === "compress" && format === "png" ? "webp" : format} onChange={(event) => setFormat(event.target.value as ImageFormat)}>{(imageMode === "compress" ? (["jpeg", "webp"] as const) : (Object.keys(formatLabels) as ImageFormat[])).map((value) => <option key={value} value={value}>{formatLabels[value]}</option>)}</select></label>
+                <label className="select-field"><span className="field-label">OUTPUT FORMAT</span><select aria-label="Output format" value={imageMode === "compress" && !["jpeg", "webp"].includes(format) ? "webp" : format} onChange={(event) => setFormat(event.target.value as ImageFormat)}>{(imageMode === "compress" ? (["jpeg", "webp"] as const) : (Object.keys(formatLabels) as ImageFormat[])).map((value) => <option key={value} value={value}>{formatLabels[value]}</option>)}</select></label>
               </div>
-              {format !== "png" && <div className="quality-control"><div><span className="field-label">QUALITY</span><strong>{quality}%</strong></div><input aria-label="Output quality" type="range" min="10" max="100" value={quality} onChange={(event) => setQuality(Number(event.target.value))} /></div>}
+              {format !== "png" && format !== "gif" && <div className="quality-control"><div><span className="field-label">QUALITY</span><strong>{quality}%</strong></div><input aria-label="Output quality" type="range" min="10" max="100" value={quality} onChange={(event) => setQuality(Number(event.target.value))} /></div>}
               {format === "jpeg" && <p className="format-note">Transparent areas are filled with white in JPEG output.</p>}
+              {format === "gif" && <p className="format-note">GIF output preserves animation (up to 300 frames) and uses a 256-color palette. Animated GIFs cannot be exported to still formats.</p>}
+              {imageMode !== "compress" && format !== "gif" && <p className="format-note">Choose GIF output to preserve animation when processing animated GIF files.</p>}
               {imageMode === "resize" && <label className="check-option"><input type="checkbox" checked={preventEnlargement} onChange={(event) => setPreventEnlargement(event.target.checked)} /><span>Prevent enlargement</span><span className="help-dot" title="Images smaller than the selected dimensions keep their original size.">?</span></label>}
               {!imageResizeCapability.available && <p className="capability-warning" role="status">{imageResizeCapability.unavailableReason}</p>}
               <button className="primary-button" onClick={startProcessing} disabled={!imageResizeCapability.available}><span>{imageMode === "resize" ? "Resize" : imageMode === "compress" ? "Compress" : "Convert"} {files.length ? `${files.length} ${files.length === 1 ? "image" : "images"}` : "images"}</span><span>↗</span></button>
@@ -229,7 +236,7 @@ function App() {
 
             <aside className="panel tools-panel">
               <div className="section-title-row"><div><h3>Image tools</h3><span>Made for your workflow</span></div><span className="tool-count">03</span></div>
-              <div className="tool-list">{tools.map((tool, index) => <button key={tool.title} className={`tool-card${tool.mode === imageMode ? " selected" : ""}`} disabled={!tool.mode} title={tool.mode ? undefined : "Coming in a future milestone"} onClick={() => { if (tool.mode) { setImageMode(tool.mode); if (tool.mode === "compress" && format === "png") setFormat("webp"); } }}><span className={`tool-icon icon-${index}`}>{tool.icon}</span><span className="tool-card-copy"><strong>{tool.title}</strong><small>{tool.detail}</small></span>{tool.mode ? <span className="tool-arrow">↗</span> : <span className="tool-lock">Soon</span>}</button>)}</div>
+              <div className="tool-list">{tools.map((tool, index) => <button key={tool.title} className={`tool-card${tool.mode === imageMode ? " selected" : ""}`} disabled={!tool.mode} title={tool.mode ? undefined : "Coming in a future milestone"} onClick={() => { if (tool.mode) { setImageMode(tool.mode); if (tool.mode === "compress" && !["jpeg", "webp"].includes(format)) setFormat("webp"); } }}><span className={`tool-icon icon-${index}`}>{tool.icon}</span><span className="tool-card-copy"><strong>{tool.title}</strong><small>{tool.detail}</small></span>{tool.mode ? <span className="tool-arrow">↗</span> : <span className="tool-lock">Soon</span>}</button>)}</div>
               <div className="supported-note"><span>✦</span><p><strong>More tools on the way</strong><br />PDF, video, audio, and more are coming soon.</p></div>
             </aside>
           </div>
@@ -505,7 +512,7 @@ function QueueRow({ job, onCancel, onDownload }: { job: ProcessingJob; onCancel:
         : "Resized";
   const sourceSize = job.sourceSize ?? job.file.size;
   const details = isComplete
-    ? `${job.sourceWidth} × ${job.sourceHeight} → ${job.outputWidth} × ${job.outputHeight} · ${formatBytes(sourceSize)} → ${formatBytes(job.output!.size)}${job.output!.size < sourceSize ? ` · ${Math.round((1 - job.output!.size / sourceSize) * 100)}% smaller` : ""}`
+    ? `${job.sourceWidth} × ${job.sourceHeight} → ${job.outputWidth} × ${job.outputHeight}${job.result?.metadata.frameCount ? ` · ${job.result.metadata.frameCount} frames` : ""} · ${formatBytes(sourceSize)} → ${formatBytes(job.output!.size)}${job.output!.size < sourceSize ? ` · ${Math.round((1 - job.output!.size / sourceSize) * 100)}% smaller` : ""}`
     : `${formatBytes(job.file.size)}${job.request.operation === "image.resize" ? ` · ${job.options && "width" in job.options ? `${job.options.width} × ${job.options.height}` : "?"}` : ""} · ${job.status === "processing" || job.status === "validating" ? `${operationName[0]?.toUpperCase()}${operationName.slice(1)} locally in background` : `Queued for ${operationName}`}`;
 
   return <div className="queue-item">
