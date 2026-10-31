@@ -58,12 +58,13 @@ function App() {
   const [format, setFormat] = useState<ImageFormat>("webp");
   const [quality, setQuality] = useState(85);
   const [preventEnlargement, setPreventEnlargement] = useState(true);
+  const [preserveMetadata, setPreserveMetadata] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [notice, setNotice] = useState("");
   const fileInput = useRef<HTMLInputElement>(null);
   const options = useMemo<ResizeOptions>(
-    () => ({ width, height, fit, format, quality, preventEnlargement }),
-    [width, height, fit, format, quality, preventEnlargement],
+    () => ({ width, height, fit, format, quality, preventEnlargement, preserveMetadata }),
+    [width, height, fit, format, quality, preventEnlargement, preserveMetadata],
   );
   const imageProcessor = useMemo(() => createBrowserImageProcessor(), []);
   const pdfProcessor = useMemo(() => createBrowserPdfProcessor(), []);
@@ -109,7 +110,11 @@ function App() {
           category: "image",
           operation: "image.compress",
           input: { name: file.name, mimeType: file.type, data: file },
-          options: { format: format === "jpeg" ? "jpeg" : "webp", quality },
+          options: {
+            format: format === "jpeg" ? "jpeg" : "webp",
+            quality,
+            preserveMetadata,
+          },
           requestedLocation: "browser",
         };
         manager.enqueueRequest(request, file);
@@ -121,7 +126,7 @@ function App() {
           category: "image",
           operation: "image.convert",
           input: { name: file.name, mimeType: file.type, data: file },
-          options: { format, quality },
+          options: { format, quality, preserveMetadata },
           requestedLocation: "browser",
         };
         manager.enqueueRequest(request, file);
@@ -229,9 +234,11 @@ function App() {
               {format === "gif" && <p className="format-note">GIF output preserves animation (up to 300 frames) and uses a 256-color palette. Animated GIFs cannot be exported to still formats.</p>}
               {imageMode !== "compress" && format !== "gif" && <p className="format-note">Choose GIF output to preserve animation when processing animated GIF files.</p>}
               {imageMode === "resize" && <label className="check-option"><input type="checkbox" checked={preventEnlargement} onChange={(event) => setPreventEnlargement(event.target.checked)} /><span>Prevent enlargement</span><span className="help-dot" title="Images smaller than the selected dimensions keep their original size.">?</span></label>}
+              <label className="check-option"><input aria-label="Preserve compatible JPEG metadata" type="checkbox" checked={preserveMetadata} onChange={(event) => setPreserveMetadata(event.target.checked)} /><span>Preserve compatible JPEG metadata</span><span className="help-dot" title="Only JPEG-to-JPEG jobs are supported. GPS, orientation, thumbnails, comments, and device identifiers are always removed.">?</span></label>
+              <p className="format-note">Metadata is stripped by default. Opt-in preservation works for JPEG input to JPEG output up to 32 MB; other formats remain stripped and show a result warning.</p>
               {!imageResizeCapability.available && <p className="capability-warning" role="status">{imageResizeCapability.unavailableReason}</p>}
               <button className="primary-button" onClick={startProcessing} disabled={!imageResizeCapability.available}><span>{imageMode === "resize" ? "Resize" : imageMode === "compress" ? "Compress" : "Convert"} {files.length ? `${files.length} ${files.length === 1 ? "image" : "images"}` : "images"}</span><span>↗</span></button>
-              <p className="privacy-note"><span>◈</span> Images are processed locally. Export removes image metadata{imageMode !== "resize" ? " and preserves pixel dimensions." : "."}{imageMode === "convert" && format === "jpeg" ? " Transparent areas become white in JPEG." : ""}</p>
+              <p className="privacy-note"><span>◈</span> Images are processed locally. Metadata is stripped unless compatible JPEG metadata preservation is enabled{imageMode !== "resize" ? " and pixel dimensions are preserved." : "."}{imageMode === "convert" && format === "jpeg" ? " Transparent areas become white in JPEG." : ""}</p>
             </section>
 
             <aside className="panel tools-panel">

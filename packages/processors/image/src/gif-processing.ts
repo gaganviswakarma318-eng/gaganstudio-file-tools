@@ -360,6 +360,12 @@ export async function processGif(
   blobBytes.set(bytes);
   const output = new Blob([blobBytes.buffer], { type: "image/gif" });
   const baseName = input.name.replace(/\.[^.]+$/, "") || "image";
+  const warnings = [GIF_WARNING];
+  if (request.options.preserveMetadata) {
+    warnings.push(
+      "GIF metadata preservation is not supported; non-animation metadata was removed. Animation timing and loop settings were retained.",
+    );
+  }
   return {
     requestId: request.id,
     location: "browser",
@@ -382,6 +388,6 @@ export async function processGif(
       outputBytes: output.size,
       durationMs: Math.max(0, Math.round(performance.now() - startedAt)),
     },
-    warnings: [GIF_WARNING],
+    warnings,
   };
 }

@@ -7,6 +7,10 @@ import {
   inspectGifPixel,
   inspectAnimatedGif,
 } from "../../packages/processors/image/test-utils/animated-gif";
+import {
+  createJpegWithExifFixture,
+  readJpegExif,
+} from "../../packages/processors/image/test-utils/jpeg-metadata";
 import { readFile } from "node:fs/promises";
 
 async function createPngFixture(
@@ -39,6 +43,34 @@ async function createPngFixture(
         }, "image/png");
       }),
     { width, height },
+  );
+  return Buffer.from(bytes);
+}
+
+async function createJpegFixture(
+  page: import("@playwright/test").Page,
+): Promise<Buffer> {
+  const bytes = await page.evaluate(
+    () =>
+      new Promise<number[]>((resolve, reject) => {
+        const canvas = document.createElement("canvas");
+        canvas.width = 48;
+        canvas.height = 32;
+        const context = canvas.getContext("2d");
+        if (!context) {
+          reject(new Error("Canvas is unavailable in the test browser."));
+          return;
+        }
+        context.fillStyle = "#cb5438";
+        context.fillRect(0, 0, canvas.width, canvas.height);
+        canvas.toBlob(async (blob) => {
+          if (!blob) {
+            reject(new Error("Could not create the JPEG test fixture."));
+            return;
+          }
+          resolve(Array.from(new Uint8Array(await blob.arrayBuffer())));
+        }, "image/jpeg");
+      }),
   );
   return Buffer.from(bytes);
 }
@@ -167,6 +199,80 @@ test("converts an image format in a worker while keeping its dimensions", async 
   await page.getByRole("button", { name: "Download" }).click();
   const download = await downloadPromise;
   expect(download.suggestedFilename()).toBe("two-colors-converted.jpg");
+});
+
+test("strips image metadata by default", async ({ page }) => {
+  const fixture = createJpegWithExifFixture(await createJpegFixture(page));
+  await page.getByRole("button", { name: /Format converter/ }).click();
+  await page.locator('input[type="file"]').setInputFiles({
+    name: "private-photo.jpg",
+    mimeType: "image/jpeg",
+    buffer: Buffer.from(fixture),
+  });
+  await page.getByLabel("Output format").selectOption("jpeg");
+  await expect(page.getByRole("checkbox", { name: "Preserve compatible JPEG metadata" }))
+    .not.toBeChecked();
+  await page.getByRole("button", { name: "Convert 1 image" }).click();
+  const downloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Download" }).click();
+  const download = await downloadPromise;
+  const outputPath = await download.path();
+  if (!outputPath) throw new Error("The browser did not save the JPEG download.");
+  const metadata = readJpegExif(new Uint8Array(await readFile(outputPath)));
+  expect(metadata.make).toBeUndefined();
+  expect(metadata.hasGps).toBe(false);
+  expect(metadata.orientation).toBeUndefined();
+});
+
+test("preserves safe JPEG camera metadata only when explicitly enabled", async ({ page }) => {
+  const fixture = createJpegWithExifFixture(await createJpegFixture(page));
+  expect(readJpegExif(fixture).make).toBe("GSFT Test Camera");
+  await page.getByRole("button", { name: /Format converter/ }).click();
+  await page.locator('input[type="file"]').setInputFiles({
+    name: "private-photo.jpg",
+    mimeType: "image/jpeg",
+    buffer: Buffer.from(fixture),
+  });
+  await page.getByLabel("Output format").selectOption("jpeg");
+  await page.getByRole("checkbox", { name: "Preserve compatible JPEG metadata" }).check();
+  await page.getByRole("button", { name: "Convert 1 image" }).click();
+  await expect(page.locator(".job-warning").first()).toContainText(
+    "Safe JPEG camera metadata was retained",
+  );
+
+  const downloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Download" }).click();
+  const download = await downloadPromise;
+  const outputPath = await download.path();
+  if (!outputPath) throw new Error("The browser did not save the JPEG download.");
+  const metadata = readJpegExif(new Uint8Array(await readFile(outputPath)));
+  expect(metadata.make).toBe("GSFT Test Camera");
+  expect(metadata.exposureTime).toEqual([1, 125]);
+  expect(metadata.pixelWidth).toBe(32);
+  expect(metadata.pixelHeight).toBe(48);
+  expect(metadata.hasGps).toBe(false);
+  expect(metadata.orientation).toBeUndefined();
+  expect(metadata.artist).toBeUndefined();
+  expect(metadata.hasDeviceSerial).toBe(false);
+  expect(metadata.hasThumbnail).toBe(false);
+});
+
+test("warns when requested metadata preservation is unsupported for the format", async ({
+  page,
+}) => {
+  await page.getByRole("button", { name: /Format converter/ }).click();
+  await page.locator('input[type="file"]').setInputFiles({
+    name: "plain.png",
+    mimeType: "image/png",
+    buffer: await createPngFixture(page),
+  });
+  await page.getByLabel("Output format").selectOption("jpeg");
+  await page.getByRole("checkbox", { name: "Preserve compatible JPEG metadata" }).check();
+  await page.getByRole("button", { name: "Convert 1 image" }).click();
+
+  await expect(page.locator(".job-warning").first()).toContainText(
+    "supported only for JPEG input and JPEG output",
+  );
 });
 
 test("resizes animated GIFs without dropping frames, delays, or loop count", async ({ page }) => {

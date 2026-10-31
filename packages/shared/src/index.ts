@@ -17,16 +17,19 @@ export interface ResizeOptions {
   format: ImageFormat;
   quality: number;
   preventEnlargement: boolean;
+  preserveMetadata?: boolean;
 }
 
 export interface ImageCompressOptions {
   format: "jpeg" | "webp";
   quality: number;
+  preserveMetadata?: boolean;
 }
 
 export interface ImageConvertOptions {
   format: ImageFormat;
   quality: number;
+  preserveMetadata?: boolean;
 }
 
 export type FileCategory = "image" | "pdf" | "document" | "video" | "audio" | "archive";

@@ -1,6 +1,7 @@
 import { detectImageFile, validateImageDimensions, validateImageFile } from "@gsft/core";
 import type { ImageProcessingRequest, ProcessingResult } from "@gsft/shared";
 import { processGif } from "./gif-processing";
+import { preserveJpegMetadata } from "./jpeg-metadata";
 
 const MIME_TYPES = {
   jpeg: "image/jpeg",
@@ -75,12 +76,35 @@ self.onmessage = async (event: MessageEvent<ImageProcessingRequest>) => {
       context.drawImage(source, 0, 0, width, height);
     }
 
-    const output = await canvas.convertToBlob({
+    let output = await canvas.convertToBlob({
       type: MIME_TYPES[options.format],
       ...(options.format === "png" ? {} : { quality: options.quality / 100 }),
     });
     if (output.type !== MIME_TYPES[options.format]) {
       throw new Error(`${options.format.toUpperCase()} export is not supported by this browser.`);
+    }
+    const warnings: string[] = [];
+    if (options.preserveMetadata) {
+      if (detected.format !== "jpeg" || options.format !== "jpeg") {
+        warnings.push(
+          "Metadata preservation is supported only for JPEG input and JPEG output; metadata was removed.",
+        );
+      } else {
+        const preserved = await preserveJpegMetadata(
+          input.data,
+          output,
+          width,
+          height,
+        );
+        output = preserved.output;
+        if (preserved.preserved) {
+          warnings.push(
+            "Safe JPEG camera metadata was retained. GPS, orientation, embedded thumbnails, comments, and device identifiers were removed.",
+          );
+        } else {
+          warnings.push("No supported JPEG camera metadata was found to preserve.");
+        }
+      }
     }
     const result: ProcessingResult = {
       requestId: request.id,
@@ -102,10 +126,12 @@ self.onmessage = async (event: MessageEvent<ImageProcessingRequest>) => {
         outputBytes: output.size,
         durationMs: Math.max(0, Math.round(performance.now() - startedAt)),
       },
-      warnings:
-        request.operation !== "image.resize" && output.size >= input.data.size
+      warnings: [
+        ...warnings,
+        ...(request.operation !== "image.resize" && output.size >= input.data.size
           ? [`The ${request.operation === "image.compress" ? "compressed" : "converted"} output is not smaller than the original.`]
-          : [],
+          : []),
+      ],
     };
     self.postMessage(result);
   } catch (error) {
