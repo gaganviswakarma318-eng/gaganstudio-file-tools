@@ -42,7 +42,7 @@ Browser-local PDF tools and local image resizing, compression, and format conver
 
 ## In progress / not implemented
 
-- Cross-platform tag-triggered package builds and GitHub Release publication are automated. A manual non-publishing mode builds all platform artifacts for hosted validation; run it in GitHub Actions after pushing workflow changes. SHA-256 manifests are verified before publication. Add owner-provided signing certificates and Apple notarization credentials to enable signed releases.
+- Cross-platform tag-triggered package builds and GitHub Release publication are automated. A manual non-publishing mode builds all platform artifacts for hosted validation; run it in GitHub Actions after pushing workflow changes. SHA-256 manifests are verified before publication. Optional Windows/macOS signing and Apple notarization support certificate secrets and Apple ID or App Store Connect API credentials; configured signatures are verified before release.
 - Additional PDF operations; document, video, audio, archive, and remote processing.
 - Explicit remote-processing consent flow and remote processor.
 
@@ -74,9 +74,10 @@ Browser-local PDF tools and local image resizing, compression, and format conver
 - `corepack pnpm test:e2e --workers=1` — passed (25 Chromium tests for metadata stripping/opt-in safe EXIF preservation, JPEG format warnings, animated GIF fidelity and safety limits, PDF operations, invalid inputs, downloads, and unavailable capabilities).
 - `corepack pnpm build:desktop` — passed; generated the Windows x64 NSIS installer and unpacked application. Linux AppImage and macOS DMG builds require their corresponding hosts.
 - Release workflow — configured for Windows NSIS, Linux AppImage, macOS DMG, and GitHub Release publication; signing activates only when complete platform credentials are configured. Hosted platform jobs have not yet run.
+- Signing checks — configured builds verify Windows Authenticode and macOS code signatures; when Apple credentials are configured the release job staples and validates the DMG notarization ticket. Credentialed hosted signing has not yet run; the repository owner must add certificate and notarization secrets.
 - Release checksums — SHA-256 manifests are generated per platform and verified before publication; automated tests cover all three platform formats and reject tampered, missing, duplicate, or unmanifested files.
 - Electron development runtime — launched successfully after adding PDF processing; the application window displayed "GaganStudio File Tools".
 
 ## Next milestone
 
-Validate the hosted multi-platform release workflow; configure and verify code signing/notarization with the release owner's credentials.
+Validate the hosted multi-platform release workflow, then verify code signing/notarization after the release owner adds the required Actions secrets.

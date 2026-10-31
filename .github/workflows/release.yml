@@ -118,7 +118,7 @@ jobs:
             $certificatePath = Join-Path $env:RUNNER_TEMP "gsft-windows-signing.pfx"
             [IO.File]::WriteAllBytes($certificatePath, [Convert]::FromBase64String($env:CERTIFICATE_BASE64))
             "CSC_LINK=$certificatePath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-            "CSC_KEY_PASSWORD=$env:CERTIFICATE_PASSWORD" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+            "GSFT_WINDOWS_SIGNING_ENABLED=true" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           }
 
       - name: Check macOS signing configuration
@@ -130,9 +130,14 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          API_KEY_BASE64: ${{ secrets.MAC_APPLE_API_KEY_BASE64 }}
+          API_KEY_ID: ${{ secrets.MAC_APPLE_API_KEY_ID }}
+          API_ISSUER: ${{ secrets.MAC_APPLE_API_ISSUER }}
         run: |
           certificate_configured=false
           notarization_configured=false
+          app_password_configured=false
+          api_key_configured=false
           if [[ -n "$CERTIFICATE_BASE64" || -n "$CERTIFICATE_PASSWORD" ]]; then
             if [[ -z "$CERTIFICATE_BASE64" || -z "$CERTIFICATE_PASSWORD" ]]; then
               echo "Configure both MAC_CERTIFICATE_BASE64 and MAC_CERTIFICATE_PASSWORD, or neither." >&2
@@ -145,6 +150,20 @@ jobs:
               echo "Configure APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD, and APPLE_TEAM_ID together, or none." >&2
               exit 1
             fi
+            app_password_configured=true
+          fi
+          if [[ -n "$API_KEY_BASE64" || -n "$API_KEY_ID" || -n "$API_ISSUER" ]]; then
+            if [[ -z "$API_KEY_BASE64" || -z "$API_KEY_ID" || -z "$API_ISSUER" ]]; then
+              echo "Configure MAC_APPLE_API_KEY_BASE64, MAC_APPLE_API_KEY_ID, and MAC_APPLE_API_ISSUER together, or none." >&2
+              exit 1
+            fi
+            api_key_configured=true
+          fi
+          if [[ "$app_password_configured" == true && "$api_key_configured" == true ]]; then
+            echo "Configure either Apple ID credentials or an App Store Connect API key, not both." >&2
+            exit 1
+          fi
+          if [[ "$app_password_configured" == true || "$api_key_configured" == true ]]; then
             notarization_configured=true
           fi
           if [[ "$notarization_configured" == true && "$certificate_configured" != true ]]; then
@@ -155,14 +174,37 @@ jobs:
             certificate_path="$RUNNER_TEMP/gsft-macos-signing.p12"
             printf '%s' "$CERTIFICATE_BASE64" | base64 -D > "$certificate_path"
             echo "CSC_LINK=$certificate_path" >> "$GITHUB_ENV"
-            echo "CSC_KEY_PASSWORD=$CERTIFICATE_PASSWORD" >> "$GITHUB_ENV"
+            echo "GSFT_MAC_SIGNING_ENABLED=true" >> "$GITHUB_ENV"
+          fi
+          if [[ "$api_key_configured" == true ]]; then
+            api_key_path="$RUNNER_TEMP/gsft-apple-api-key.p8"
+            printf '%s' "$API_KEY_BASE64" | base64 -D > "$api_key_path"
+            echo "APPLE_API_KEY=$api_key_path" >> "$GITHUB_ENV"
+          fi
+          if [[ "$notarization_configured" == true ]]; then
+            echo "GSFT_MAC_NOTARIZATION_ENABLED=true" >> "$GITHUB_ENV"
           fi
 
       - name: Build Windows installer
         if: runner.os == 'Windows'
+        env:
+          CSC_KEY_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
         run: |
           corepack enable pnpm --install-directory node_modules/.bin
           pnpm exec electron-builder --win nsis
+
+      - name: Verify Windows installer signature
+        if: runner.os == 'Windows' && env.GSFT_WINDOWS_SIGNING_ENABLED == 'true'
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem release -Filter '*-Setup.exe' | Select-Object -First 1
+          if (-not $installer) {
+            throw "Signed Windows installer was not produced."
+          }
+          $signature = Get-AuthenticodeSignature -FilePath $installer.FullName
+          if ($signature.Status -ne 'Valid') {
+            throw "Windows installer signature is not valid: $($signature.Status) $($signature.StatusMessage)"
+          }
 
       - name: Build Linux package
         if: runner.os == 'Linux'
@@ -173,12 +215,35 @@ jobs:
       - name: Build macOS package
         if: runner.os == 'macOS'
         env:
+          CSC_KEY_PASSWORD: ${{ secrets.MAC_CERTIFICATE_PASSWORD }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_API_KEY_ID: ${{ secrets.MAC_APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.MAC_APPLE_API_ISSUER }}
         run: |
           corepack enable pnpm --install-directory node_modules/.bin
           pnpm exec electron-builder --mac dmg
+
+      - name: Verify macOS signature and notarization
+        if: runner.os == 'macOS' && env.GSFT_MAC_SIGNING_ENABLED == 'true'
+        shell: bash
+        run: |
+          app_path="$(find release -maxdepth 4 -type d -name '*.app' -print -quit)"
+          if [[ -z "$app_path" ]]; then
+            echo "Signed macOS application bundle was not produced." >&2
+            exit 1
+          fi
+          codesign --verify --deep --strict --verbose=2 "$app_path"
+          if [[ "${GSFT_MAC_NOTARIZATION_ENABLED:-}" == "true" ]]; then
+            dmg_path="$(find release -maxdepth 1 -type f -name '*.dmg' -print -quit)"
+            if [[ -z "$dmg_path" ]]; then
+              echo "Notarized macOS disk image was not produced." >&2
+              exit 1
+            fi
+            xcrun stapler staple "$dmg_path"
+            xcrun stapler validate "$dmg_path"
+          fi
 
       - name: Create checksums
         run: node scripts/release-assets.mjs create "${{ runner.os }}" release

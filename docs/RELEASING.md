@@ -17,7 +17,10 @@ Without signing secrets, the workflow creates unsigned packages. Add repository 
 | `APPLE_ID` | Apple account used for notarization |
 | `APPLE_APP_SPECIFIC_PASSWORD` | App-specific password for that Apple account |
 | `APPLE_TEAM_ID` | Apple Developer team identifier |
+| `MAC_APPLE_API_KEY_BASE64` | Base64-encoded App Store Connect `.p8` API key |
+| `MAC_APPLE_API_KEY_ID` | App Store Connect API key identifier |
+| `MAC_APPLE_API_ISSUER` | App Store Connect issuer identifier |
 
-Supply each platform's certificate and password together. Apple notarization credentials must be supplied as a complete set and require the macOS signing certificate. The workflows validate incomplete credential sets and fail instead of silently publishing with unintended signing status. Store certificate material only in repository/organization Actions secrets; do not commit it.
+Supply each platform's certificate and password together. For Apple notarization, prefer the API-key secrets; alternatively, supply `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, and `APPLE_TEAM_ID` as a complete set. Do not configure both authentication methods. Notarization requires the macOS signing certificate. Electron Builder notarizes signed macOS builds when the Apple secrets are present; the workflow validates the resulting app signature and staples/validates the DMG ticket before release. Windows signatures are also checked when a certificate is configured. Incomplete credentials or invalid signatures fail the release instead of silently publishing unsigned files. Store certificate material only in repository/organization Actions secrets; do not commit it.
 
 Release tags publish public GitHub Releases. Only push a release tag after reviewing the corresponding commit and confirming the repository's Actions permissions allow release creation.
